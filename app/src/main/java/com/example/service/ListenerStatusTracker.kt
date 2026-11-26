@@ -29,12 +29,19 @@ object ListenerStatusTracker {
     private val _lastCapturedTimestamp = MutableStateFlow<Long?>(null)
     val lastCapturedTimestamp: StateFlow<Long?> = _lastCapturedTimestamp.asStateFlow()
 
+    private val _lastRawNotificationTimestamp = MutableStateFlow<Long?>(null)
+    val lastRawNotificationTimestamp: StateFlow<Long?> = _lastRawNotificationTimestamp.asStateFlow()
+
     fun setServiceBound(bound: Boolean) {
         _isServiceBound.value = bound
     }
 
     fun markMessageCaptured(timestamp: Long) {
         _lastCapturedTimestamp.value = timestamp
+    }
+
+    fun markRawNotificationSeen(timestamp: Long) {
+        _lastRawNotificationTimestamp.value = timestamp
     }
 
     fun isNotificationAccessGranted(context: Context): Boolean {

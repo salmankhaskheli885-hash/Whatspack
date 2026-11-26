@@ -45,6 +45,11 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
     }
 
     private fun processNotification(sbn: StatusBarNotification) {
+        if (sbn.packageName in WhatsAppNotificationParser.SUPPORTED_PACKAGES) {
+            ListenerStatusTracker.markRawNotificationSeen(
+                sbn.postTime.takeIf { it > 0L } ?: System.currentTimeMillis()
+            )
+        }
         val result = WhatsAppNotificationParser.parseEventsFromStatusBarNotification(sbn)
         if (result.messages.isEmpty() && result.deletedSignals.isEmpty()) return
 

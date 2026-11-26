@@ -216,9 +216,21 @@ fun PermissionScreen(
                                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
                                 ) {
                                     Text(
-                                        text = "Last message captured: ${WhatsAppTimeFormatter.formatFullDateTime(ts)}",
+                                        text = "Last message saved: ${WhatsAppTimeFormatter.formatFullDateTime(ts)}",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    )
+                                }
+                            } ?: systemState.lastRawNotificationTimestamp?.let { ts ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                                ) {
+                                    Text(
+                                        text = "Last WhatsApp ping seen: ${WhatsAppTimeFormatter.formatFullDateTime(ts)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                     )
                                 }
@@ -285,15 +297,19 @@ fun PermissionScreen(
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Phone Storage WhatsApp Vault",
+                                        text = if (folderLabel != null) {
+                                            "Storage Access Active ($folderLabel)"
+                                        } else {
+                                            "WhatsApp Storage Folder Permission"
+                                        },
                                         style = MaterialTheme.typography.titleMedium,
                                         color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     Text(
                                         text = if (folderLabel != null) {
-                                            "Connected: $folderLabel"
+                                            "Auto-syncing photos, videos, voice notes & statuses into ChatReader local storage."
                                         } else {
-                                            "Import existing WhatsApp photos, videos, voice notes & chats into local vault"
+                                            "Tap below and allow WhatsApp/Media folder access to save existing files locally. Note: WhatsApp encrypts past text DBs, so past text chats require Export Chat."
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -302,7 +318,7 @@ fun PermissionScreen(
                             }
 
                             Text(
-                                text = "Select Android/media/com.whatsapp/WhatsApp/Media (or WhatsApp/Media) to copy and save existing files permanently here, OR use WhatsApp → Export chat → Share to ChatReader.",
+                                text = "Choose Android/media/com.whatsapp/WhatsApp/Media (or WhatsApp/Media) and tap 'Use this folder' → 'Allow'. For full old text chats, open WhatsApp → ⋮ → More → Export chat → Share to ChatReader.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

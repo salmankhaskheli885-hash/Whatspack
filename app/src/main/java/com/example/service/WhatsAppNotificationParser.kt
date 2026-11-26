@@ -82,7 +82,10 @@ object WhatsAppNotificationParser {
         "تم حذف هذه الرسالة",
     )
 
-    private val MESSAGE_COUNT_SUFFIX_REGEX = Regex("""\s*\(\d+\s+messages?\)$""", RegexOption.IGNORE_CASE)
+    private val MESSAGE_COUNT_SUFFIX_REGEX = Regex(
+        """\s*\(\d+\s+(?:new\s+|unread\s+)?(?:messages?|msgs?)\)$""",
+        RegexOption.IGNORE_CASE,
+    )
     private val DURATION_REGEX = Regex("""\b(\d{1,2}:\d{2})\b""")
 
     fun appLabelForPackage(packageName: String): String = when (packageName) {
@@ -171,10 +174,15 @@ object WhatsAppNotificationParser {
             val rawConvTitle = payload.conversationTitle
                 ?.trim()
                 ?.replace(MESSAGE_COUNT_SUFFIX_REGEX, "")
-                ?.takeIf { it.isNotBlank() }
+                ?.takeIf { it.isNotBlank() && !isNoiseTitle(it) }
 
             val fallbackTitle = cleanTitle(payload.title)
-            val resolvedChatTitle = rawConvTitle ?: fallbackTitle
+                .takeIf { it.isNotBlank() && !isNoiseTitle(it) }
+
+            val firstSenderFallback = payload.styleMessages
+                .firstNotNullOfOrNull { it.sender?.trim()?.takeIf { s -> s.isNotBlank() && !isNoiseTitle(s) } }
+
+            val resolvedChatTitle = rawConvTitle ?: fallbackTitle ?: firstSenderFallback.orEmpty()
             if (resolvedChatTitle.isBlank() || isNoiseTitle(resolvedChatTitle)) {
                 return ParsedNotificationResult()
             }
@@ -240,35 +248,46 @@ object WhatsAppNotificationParser {
         val rawTitle = cleanTitle(payload.title)
         val rawBody = (payload.bigText ?: payload.text)?.trim().orEmpty()
         if (rawTitle.isBlank() || rawBody.isBlank()) return ParsedNotificationResult()
-        if (isNoiseTitle(rawTitle)) return ParsedNotificationResult()
 
         val convTitle = payload.conversationTitle
             ?.trim()
             ?.replace(MESSAGE_COUNT_SUFFIX_REGEX, "")
-            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { it.isNotBlank() && !isNoiseTitle(it) }
 
-        val (chatTitle, senderName, isGroup) = when {
+        val (chatTitle, senderName, isGroup, effectiveBody) = when {
+            isNoiseTitle(rawTitle) && rawBody.contains(":") && !isNoiseBody(rawBody) -> {
+                val colonIdx = rawBody.indexOf(':')
+                val sender = rawBody.substring(0, colonIdx).trim()
+                val msgBody = rawBody.substring(colonIdx + 1).trim()
+                if (sender.isBlank() || msgBody.isBlank() || isNoiseTitle(sender)) {
+                    return ParsedNotificationResult()
+                }
+                val title = convTitle ?: sender
+                val group = convTitle != null && !convTitle.equals(sender, ignoreCase = true)
+                FallbackParts(title, sender, group || payload.isGroupConversation, msgBody)
+            }
+            isNoiseTitle(rawTitle) -> return ParsedNotificationResult()
             convTitle != null -> {
                 val sender = rawTitle.removePrefix("$convTitle:").trim().ifBlank { rawTitle }
-                Triple(convTitle, sender, true)
+                FallbackParts(convTitle, sender, true, rawBody)
             }
             rawTitle.contains(":") -> {
                 val idx = rawTitle.indexOf(':')
                 val group = rawTitle.substring(0, idx).trim()
                 val sender = rawTitle.substring(idx + 1).trim()
                 if (group.isNotBlank() && sender.isNotBlank()) {
-                    Triple(group, sender, true)
+                    FallbackParts(group, sender, true, rawBody)
                 } else {
-                    Triple(rawTitle, rawTitle, payload.isGroupConversation)
+                    FallbackParts(rawTitle, rawTitle, payload.isGroupConversation, rawBody)
                 }
             }
-            else -> Triple(rawTitle, rawTitle, payload.isGroupConversation)
+            else -> FallbackParts(rawTitle, rawTitle, payload.isGroupConversation, rawBody)
         }
 
         val chatId = buildChatId(payload.packageName, chatTitle)
         val ts = payload.postTime.takeIf { it > 0L } ?: System.currentTimeMillis()
 
-        if (isDeletedMessageMarker(rawBody)) {
+        if (isDeletedMessageMarker(effectiveBody)) {
             return ParsedNotificationResult(
                 deletedSignals = listOf(
                     DeletedMessageSignal(
@@ -280,9 +299,9 @@ object WhatsAppNotificationParser {
             )
         }
 
-        if (isNoiseBody(rawBody)) return ParsedNotificationResult()
+        if (isNoiseBody(effectiveBody)) return ParsedNotificationResult()
 
-        val (msgType, duration, formattedBody, isViewOnce) = classifyMessage(rawBody, null)
+        val (msgType, duration, formattedBody, isViewOnce) = classifyMessage(effectiveBody, null)
 
         return ParsedNotificationResult(
             messages = listOf(
@@ -381,6 +400,13 @@ object WhatsAppNotificationParser {
         val senderName: String,
         val body: String,
         val isGroup: Boolean,
+    )
+
+    private data class FallbackParts(
+        val chatTitle: String,
+        val senderName: String,
+        val isGroup: Boolean,
+        val body: String,
     )
 
     private fun fallbackTextForMimeType(mimeType: String?): String {

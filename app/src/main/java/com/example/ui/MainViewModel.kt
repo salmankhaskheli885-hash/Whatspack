@@ -36,6 +36,7 @@ data class SystemPermissionState(
     val isVoiceSearchPermissionGranted: Boolean = false,
     val isServiceBound: Boolean = false,
     val lastCapturedTimestamp: Long? = null,
+    val lastRawNotificationTimestamp: Long? = null,
     val whatsAppApps: List<WhatsAppAppStatus> = emptyList(),
     val connectedFolderLabel: String? = null,
     val lastVaultSyncTimestamp: Long? = null,
@@ -96,24 +97,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         voicePermissionGranted,
         ListenerStatusTracker.isServiceBound,
         ListenerStatusTracker.lastCapturedTimestamp,
-        whatsAppApps,
-    ) { notifGranted, voiceGranted, bound, lastTs, apps ->
+        ListenerStatusTracker.lastRawNotificationTimestamp,
+    ) { notifGranted, voiceGranted, bound, lastTs, rawTs ->
         SystemPermissionState(
             isNotificationAccessGranted = notifGranted,
             isVoiceSearchPermissionGranted = voiceGranted,
             isServiceBound = bound,
             lastCapturedTimestamp = lastTs,
-            whatsAppApps = apps,
+            lastRawNotificationTimestamp = rawTs,
         )
     }
 
     val systemState: StateFlow<SystemPermissionState> = combine(
         permissionTuple,
+        whatsAppApps,
         vaultInfo,
         isImporting,
         importStatusMessage,
-    ) { base, vault, importing, msg ->
+    ) { base, apps, vault, importing, msg ->
         base.copy(
+            whatsAppApps = apps,
             connectedFolderLabel = vault.folderLabel,
             lastVaultSyncTimestamp = vault.lastSyncTimestamp,
             isImporting = importing,
@@ -232,8 +235,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         permissionGranted.value = ListenerStatusTracker.isNotificationAccessGranted(context)
         voicePermissionGranted.value = ListenerStatusTracker.isVoiceSearchPermissionGranted(context)
         whatsAppApps.value = ListenerStatusTracker.queryWhatsAppApps(context)
-        vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(context)
+        val latestVault = WhatsAppStorageImporter.getVaultFolderInfo(context)
+        vaultInfo.value = latestVault
         ListenerStatusTracker.requestRebindIfNeeded(context)
+
+        val lastSync = latestVault.lastSyncTimestamp ?: 0L
+        if (latestVault.treeUriString != null &&
+            !isImporting.value &&
+            System.currentTimeMillis() - lastSync > 60_000L
+        ) {
+            syncConnectedFolder()
+        }
     }
 
     fun importFromTreeUri(treeUri: Uri) {

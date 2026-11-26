@@ -1,6 +1,8 @@
 package com.example.ui
 
 import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -121,7 +123,17 @@ fun ChatReaderNavHost(
     }
 
     val launchFolderPicker = {
-        folderPickerLauncher.launch(null)
+        val initialUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            runCatching {
+                DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents",
+                    "primary:Android/media/com.whatsapp/WhatsApp/Media",
+                )
+            }.getOrNull()
+        } else {
+            null
+        }
+        folderPickerLauncher.launch(initialUri)
     }
 
     val launchFilePicker = {

@@ -209,4 +209,46 @@ class WhatsAppParserTest {
         assertEquals("0:08", videoResult.first().mediaDuration)
         assertTrue(videoResult.first().isViewOnce)
     }
+
+    @Test
+    fun `captures MessagingStyle and fallback messages even when EXTRA_TITLE is WhatsApp`() {
+        val styleResult = WhatsAppNotificationParser.parse(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "wa_title_only",
+                postTime = 8000L,
+                flags = 0,
+                title = "WhatsApp",
+                text = null,
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = listOf(
+                    RawNotificationPayload.StyleMessageItem("Usman", "Assalam o alaikum", 8000L),
+                ),
+            )
+        )
+        assertEquals(1, styleResult.size)
+        assertEquals("Usman", styleResult.first().chatTitle)
+        assertEquals("Assalam o alaikum", styleResult.first().body)
+
+        val fallbackResult = WhatsAppNotificationParser.parse(
+            RawNotificationPayload(
+                packageName = "com.whatsapp.w4b",
+                notificationKey = "w4b_title_only",
+                postTime = 9000L,
+                flags = 0,
+                title = "WhatsApp Business",
+                text = "Tariq: Invoice bhej dein",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        )
+        assertEquals(1, fallbackResult.size)
+        assertEquals("Tariq", fallbackResult.first().chatTitle)
+        assertEquals("Invoice bhej dein", fallbackResult.first().body)
+        assertEquals("WA Business", fallbackResult.first().appLabel)
+    }
 }
