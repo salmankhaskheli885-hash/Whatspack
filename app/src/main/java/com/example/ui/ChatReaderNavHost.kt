@@ -31,7 +31,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -49,6 +51,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.R
+import com.example.ui.components.FolderAccessGuideSheet
+import com.example.ui.components.NotificationAccessGuideSheet
 import com.example.ui.screens.ChatDetailScreen
 import com.example.ui.screens.ChatsScreen
 import com.example.ui.screens.DetailsScreen
@@ -134,18 +138,33 @@ fun ChatReaderNavHost(
         }
     }
 
-    val launchFolderPicker = {
+    var showNotificationGuide by remember { mutableStateOf(false) }
+    var showFolderGuide by remember { mutableStateOf(false) }
+
+    val launchFolderPickerDirect = {
         val initialUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             runCatching {
                 DocumentsContract.buildDocumentUri(
                     "com.android.externalstorage.documents",
-                    "primary:Android/media/com.whatsapp/WhatsApp/Media",
+                    "primary:Android/media",
                 )
             }.getOrNull()
         } else {
             null
         }
         folderPickerLauncher.launch(initialUri)
+    }
+
+    val requestFolderAccessWithGuide = {
+        showFolderGuide = true
+    }
+
+    val requestNotificationAccessWithGuide = {
+        if (systemState.isNotificationAccessGranted) {
+            viewModel.openNotificationSettings()
+        } else {
+            showNotificationGuide = true
+        }
     }
 
     val launchFilePicker = {
@@ -270,12 +289,12 @@ fun ChatReaderNavHost(
                             },
                             onSearchQueryChange = viewModel::updateSearchQuery,
                             onSelectFilter = viewModel::selectFilter,
-                            onGrantPermissionClick = viewModel::openNotificationSettings,
+                            onGrantPermissionClick = requestNotificationAccessWithGuide,
                             onOpenPermissionTab = {
                                 navigateToTopLevel(AppRoutes.ROUTE_PERMISSION)
                             },
                             onVoicePermissionChanged = viewModel::refreshSystemStatus,
-                            onImportFolderClick = launchFolderPicker,
+                            onImportFolderClick = requestFolderAccessWithGuide,
                             onSyncFolderClick = viewModel::syncConnectedFolder,
                             onImportFilesClick = launchFilePicker,
                             onDismissImportMessage = viewModel::clearImportStatusMessage,
@@ -292,7 +311,7 @@ fun ChatReaderNavHost(
                             onOpenChat = { chatId ->
                                 navController.navigate(AppRoutes.chatDetail(chatId))
                             },
-                            onConnectFolderClick = launchFolderPicker,
+                            onConnectFolderClick = requestFolderAccessWithGuide,
                             onSyncFolderClick = viewModel::syncConnectedFolder,
                             onImportFilesClick = launchFilePicker,
                         )
@@ -311,12 +330,12 @@ fun ChatReaderNavHost(
                     composable(AppRoutes.ROUTE_PERMISSION) {
                         PermissionScreen(
                             systemState = systemState,
-                            onOpenNotificationSettings = viewModel::openNotificationSettings,
+                            onOpenNotificationSettings = requestNotificationAccessWithGuide,
                             onVoicePermissionChanged = viewModel::refreshSystemStatus,
                             onOpenAppNotificationSettings = viewModel::openWhatsAppNotificationSettings,
                             onOpenOwnAppDetails = viewModel::openOwnAppDetailsSettings,
                             onOpenBatterySettings = viewModel::openBatteryOptimizationSettings,
-                            onConnectWhatsAppFolder = launchFolderPicker,
+                            onConnectWhatsAppFolder = requestFolderAccessWithGuide,
                             onSyncWhatsAppFolder = viewModel::syncConnectedFolder,
                             onImportChatOrMediaFiles = launchFilePicker,
                             onSaveBackupToStorage = { backupCreateLauncher.launch("ChatReader_Backup.json") },
@@ -349,6 +368,26 @@ fun ChatReaderNavHost(
                 }
             }
         }
+    }
+
+    if (showNotificationGuide) {
+        NotificationAccessGuideSheet(
+            onAllow = {
+                showNotificationGuide = false
+                viewModel.openNotificationSettings()
+            },
+            onDismiss = { showNotificationGuide = false },
+        )
+    }
+
+    if (showFolderGuide) {
+        FolderAccessGuideSheet(
+            onAllow = {
+                showFolderGuide = false
+                launchFolderPickerDirect()
+            },
+            onDismiss = { showFolderGuide = false },
+        )
     }
 }
 

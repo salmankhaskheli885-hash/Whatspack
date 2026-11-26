@@ -97,6 +97,7 @@ import com.example.ui.ChatFilter
 import com.example.ui.ChatsUiState
 import com.example.ui.components.ContactAvatar
 import com.example.ui.components.DeletedPreservedBadge
+import com.example.ui.components.FolderAccessBannerCard
 import com.example.ui.components.PermissionBannerCard
 import com.example.ui.components.ReadOnlyBadge
 import com.example.ui.components.WhatsAppTimeFormatter
@@ -437,6 +438,15 @@ fun ChatsScreen(
                         PermissionBannerCard(
                             onGrantClick = onGrantPermissionClick,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+
+                if (uiState.systemState.connectedFolderLabel == null) {
+                    item(key = "folder_access_banner") {
+                        FolderAccessBannerCard(
+                            onAllowClick = onImportFolderClick,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         )
                     }
                 }

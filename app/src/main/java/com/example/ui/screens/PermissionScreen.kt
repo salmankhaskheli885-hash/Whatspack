@@ -321,7 +321,7 @@ fun PermissionScreen(
                             }
 
                             Text(
-                                text = "Choose Android/media/com.whatsapp/WhatsApp/Media (or WhatsApp/Media) and tap 'Use this folder' → 'Allow'. For full old text chats, open WhatsApp → ⋮ → More → Export chat → Share to ChatReader.",
+                                text = "Select Android/media (covers both com.whatsapp & com.whatsapp.w4b) or com.whatsapp and tap 'USE THIS FOLDER' → 'Allow'. For full old text chats, open WhatsApp → ⋮ → More → Export chat → Share to ChatReader.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

@@ -44,7 +44,7 @@ object WhatsAppStorageImporter {
     private const val KEY_LAST_SYNC_TS = "last_vault_sync_ts"
     private const val KEY_CAPTURED_SAF_SIGNATURES = "captured_saf_signatures"
     private const val MEDIA_DIR_NAME = "captured_media"
-    private const val MAX_FILES_PER_SYNC = 250
+    private const val MAX_FILES_PER_SYNC = 300
     private val safCaptureMutex = Mutex()
 
     fun getVaultFolderInfo(context: Context): VaultFolderInfo {
@@ -124,7 +124,8 @@ object WhatsAppStorageImporter {
             }
 
             val messageType = classifyFileType(mime, nameLower, item.relativePath) ?: continue
-            val isBusiness = rootIsBusiness || item.relativePath.lowercase().contains("business")
+            val relLower = item.relativePath.lowercase()
+            val isBusiness = rootIsBusiness || relLower.contains("business") || relLower.contains("w4b")
             val packageName = if (isBusiness) "com.whatsapp.w4b" else "com.whatsapp"
             val appLabel = WhatsAppNotificationParser.appLabelForPackage(packageName)
             val (vaultTitle, isStatus) = resolveVaultChatTitle(item.relativePath, messageType, isBusiness)
@@ -449,7 +450,7 @@ object WhatsAppStorageImporter {
         out: MutableList<DiscoveredDocFile>,
         skipSentFolder: Boolean = false,
     ) {
-        if (depth > 5 || out.size >= 1000) return
+        if (depth > 7 || out.size >= 3000) return
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -466,7 +467,7 @@ object WhatsAppStorageImporter {
                 val modIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
                 val sizeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
 
-                while (cursor.moveToNext() && out.size < 1000) {
+                while (cursor.moveToNext() && out.size < 3000) {
                     val docId = cursor.getString(idIdx) ?: continue
                     val name = cursor.getString(nameIdx) ?: continue
                     val mime = cursor.getString(mimeIdx) ?: ""
@@ -474,7 +475,17 @@ object WhatsAppStorageImporter {
 
                     if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
                         val lower = name.lowercase()
-                        if (lower == "backups" || lower == "databases" || (skipSentFolder && lower == "sent")) {
+                        val isUnrelatedAppPkg = depth == 0 &&
+                            (lower.startsWith("com.") || lower.startsWith("org.") ||
+                                lower.startsWith("net.") || lower.startsWith("io.")) &&
+                            !lower.contains("whatsapp")
+                        if (isUnrelatedAppPkg ||
+                            lower == "backups" ||
+                            lower == "databases" ||
+                            lower == ".thumbs" ||
+                            lower.contains("stickers") ||
+                            (skipSentFolder && lower == "sent")
+                        ) {
                             continue
                         }
                         traverseTree(context, treeUri, docId, nextRel, depth + 1, out, skipSentFolder)
