@@ -267,15 +267,6 @@ fun ChatsScreen(
                         contentDescription = "Search chats",
                     )
                 }
-                IconButton(
-                    onClick = onOpenPermissionTab,
-                    modifier = Modifier.testTag("chats_permission_status_icon"),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.VerifiedUser,
-                        contentDescription = "Permission status",
-                    )
-                }
             },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.primary,

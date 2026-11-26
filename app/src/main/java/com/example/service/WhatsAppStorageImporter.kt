@@ -15,6 +15,9 @@ import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.math.abs
 
 data class StorageImportSummary(
     val importedCount: Int,
@@ -28,13 +31,21 @@ data class VaultFolderInfo(
     val lastSyncTimestamp: Long?,
 )
 
+data class CapturedSafMedia(
+    val filePath: String,
+    val duration: String?,
+    val fileName: String,
+)
+
 object WhatsAppStorageImporter {
     private const val PREFS_NAME = "chat_reader_vault_prefs"
     private const val KEY_TREE_URI = "connected_whatsapp_tree_uri"
     private const val KEY_FOLDER_LABEL = "connected_whatsapp_folder_label"
     private const val KEY_LAST_SYNC_TS = "last_vault_sync_ts"
+    private const val KEY_CAPTURED_SAF_SIGNATURES = "captured_saf_signatures"
     private const val MEDIA_DIR_NAME = "captured_media"
     private const val MAX_FILES_PER_SYNC = 250
+    private val safCaptureMutex = Mutex()
 
     fun getVaultFolderInfo(context: Context): VaultFolderInfo {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -119,6 +130,10 @@ object WhatsAppStorageImporter {
             val (vaultTitle, isStatus) = resolveVaultChatTitle(item.relativePath, messageType, isBusiness)
 
             val dedupKey = sha256("saf|${item.relativePath}|${item.displayName}|${item.size}|${item.lastModified}")
+            if (isSafSignatureCaptured(context, dedupKey)) {
+                skipped++
+                continue
+            }
             val copiedPath = copyUriToVault(context, item.uri, item.displayName) ?: continue
             val duration = if (messageType == MessageTypes.VOICE || messageType == MessageTypes.VIDEO) {
                 extractMediaDuration(copiedPath)
@@ -147,6 +162,7 @@ object WhatsAppStorageImporter {
 
             val saved = repository.saveIncomingMessage(parsed, checkRecentDuplicate = false)
             if (saved) {
+                markSafSignatureCaptured(context, dedupKey)
                 imported++
             } else {
                 runCatching { File(copiedPath).delete() }
@@ -165,6 +181,74 @@ object WhatsAppStorageImporter {
             else -> "No supported WhatsApp photos, videos, voice notes, or exports found in this folder."
         }
         return StorageImportSummary(imported, skipped, message)
+    }
+
+    suspend fun captureLatestMediaForNotification(
+        context: Context,
+        messageType: String,
+        packageName: String,
+        timestamp: Long,
+    ): CapturedSafMedia? = safCaptureMutex.withLock {
+        val treeUriStr = getVaultFolderInfo(context).treeUriString ?: return@withLock null
+        val treeUri = runCatching { Uri.parse(treeUriStr) }.getOrNull() ?: return@withLock null
+        val rootDocId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: return@withLock null
+
+        val collected = mutableListOf<DiscoveredDocFile>()
+        traverseTree(
+            context = context,
+            treeUri = treeUri,
+            parentDocId = rootDocId,
+            relativePath = "",
+            depth = 0,
+            out = collected,
+            skipSentFolder = true,
+        )
+
+        val windowStart = timestamp - 20_000L
+        val windowEnd = timestamp + 60_000L
+        val preferBusiness = packageName == "com.whatsapp.w4b"
+
+        val candidates = collected.filter { item ->
+            val nameLower = item.displayName.lowercase()
+            if (item.size <= 0L || nameLower == ".nomedia" || nameLower.startsWith("tmp")) {
+                return@filter false
+            }
+            if (item.lastModified !in windowStart..windowEnd) {
+                return@filter false
+            }
+            val classified = classifyFileType(item.mimeType.lowercase(), nameLower, item.relativePath)
+            if (classified != messageType) return@filter false
+            val sig = sha256("saf|${item.relativePath}|${item.displayName}|${item.size}|${item.lastModified}")
+            !isSafSignatureCaptured(context, sig)
+        }
+
+        val bestMatch = candidates.minByOrNull { item ->
+            val relLower = item.relativePath.lowercase()
+            val isBizPath = relLower.contains("business") || relLower.contains("w4b")
+            val pkgPenalty = if (preferBusiness == isBizPath) 0L else 100_000L
+            pkgPenalty + abs(item.lastModified - timestamp)
+        } ?: return@withLock null
+
+        val sig = sha256("saf|${bestMatch.relativePath}|${bestMatch.displayName}|${bestMatch.size}|${bestMatch.lastModified}")
+        val copiedPath = copyUriToVault(context, bestMatch.uri, bestMatch.displayName) ?: return@withLock null
+        markSafSignatureCaptured(context, sig)
+        val duration = if (messageType == MessageTypes.VOICE || messageType == MessageTypes.VIDEO) {
+            extractMediaDuration(copiedPath)
+        } else {
+            null
+        }
+        CapturedSafMedia(
+            filePath = copiedPath,
+            duration = duration,
+            fileName = bestMatch.displayName,
+        )
+    }
+
+    fun clearCapturedSafTracking(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_CAPTURED_SAF_SIGNATURES)
+            .apply()
     }
 
     suspend fun importDocumentUris(
@@ -209,6 +293,11 @@ object WhatsAppStorageImporter {
             val nameLower = name.lowercase()
 
             when {
+                nameLower.endsWith(".json") || mime.contains("json") -> {
+                    val backupSummary = ChatBackupManager.restoreBackupFromUri(context, uri, repository)
+                    imported += backupSummary.importedCount
+                    skipped += backupSummary.skippedDuplicates
+                }
                 nameLower.endsWith(".zip") || mime.contains("zip") -> {
                     val zipSummary = importZipExport(context, uri, name, repository)
                     imported += zipSummary.importedCount
@@ -358,6 +447,7 @@ object WhatsAppStorageImporter {
         relativePath: String,
         depth: Int,
         out: MutableList<DiscoveredDocFile>,
+        skipSentFolder: Boolean = false,
     ) {
         if (depth > 5 || out.size >= 1000) return
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
@@ -384,10 +474,10 @@ object WhatsAppStorageImporter {
 
                     if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
                         val lower = name.lowercase()
-                        if (lower == "sent" || lower == "private" || lower == "backups" || lower == "databases") {
-                            if (lower == "backups" || lower == "databases") continue
+                        if (lower == "backups" || lower == "databases" || (skipSentFolder && lower == "sent")) {
+                            continue
                         }
-                        traverseTree(context, treeUri, docId, nextRel, depth + 1, out)
+                        traverseTree(context, treeUri, docId, nextRel, depth + 1, out, skipSentFolder)
                     } else {
                         val mod = if (modIdx >= 0) cursor.getLong(modIdx) else 0L
                         val size = if (sizeIdx >= 0) cursor.getLong(sizeIdx) else 0L
@@ -522,5 +612,22 @@ object WhatsAppStorageImporter {
     private fun sha256(input: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun isSafSignatureCaptured(context: Context, signature: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val existing = prefs.getStringSet(KEY_CAPTURED_SAF_SIGNATURES, emptySet()) ?: emptySet()
+        return signature in existing
+    }
+
+    private fun markSafSignatureCaptured(context: Context, signature: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val existing = prefs.getStringSet(KEY_CAPTURED_SAF_SIGNATURES, emptySet()).orEmpty()
+        val updated = if (existing.size >= 1500) {
+            (existing.drop(existing.size - 1200) + signature).toSet()
+        } else {
+            existing + signature
+        }
+        prefs.edit().putStringSet(KEY_CAPTURED_SAF_SIGNATURES, updated).apply()
     }
 }

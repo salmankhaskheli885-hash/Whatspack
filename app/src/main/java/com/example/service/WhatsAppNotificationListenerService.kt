@@ -3,10 +3,12 @@ package com.example.service
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.example.ChatReaderApp
+import com.example.data.repository.MessageTypes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class WhatsAppNotificationListenerService : NotificationListenerService() {
@@ -69,6 +71,43 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
                 val inserted = repository.saveIncomingMessage(enriched)
                 if (inserted) {
                     ListenerStatusTracker.markMessageCaptured(enriched.timestamp)
+                }
+
+                val needsSafMedia = enriched.mediaFilePath == null &&
+                    enriched.messageType in setOf(
+                        MessageTypes.IMAGE,
+                        MessageTypes.VIDEO,
+                        MessageTypes.VOICE,
+                        MessageTypes.DOCUMENT,
+                    )
+                if (needsSafMedia &&
+                    WhatsAppStorageImporter.getVaultFolderInfo(applicationContext).treeUriString != null
+                ) {
+                    launch {
+                        delay(1_200L)
+                        var captured = WhatsAppStorageImporter.captureLatestMediaForNotification(
+                            context = applicationContext,
+                            messageType = enriched.messageType,
+                            packageName = enriched.packageName,
+                            timestamp = enriched.timestamp,
+                        )
+                        if (captured == null) {
+                            delay(2_200L)
+                            captured = WhatsAppStorageImporter.captureLatestMediaForNotification(
+                                context = applicationContext,
+                                messageType = enriched.messageType,
+                                packageName = enriched.packageName,
+                                timestamp = enriched.timestamp,
+                            )
+                        }
+                        if (captured != null) {
+                            repository.attachMediaToMessage(
+                                dedupKey = enriched.dedupKey,
+                                mediaFilePath = captured.filePath,
+                                mediaDuration = captured.duration,
+                            )
+                        }
+                    }
                 }
             }
             result.deletedSignals.forEach { signal ->

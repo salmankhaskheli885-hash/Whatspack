@@ -13,9 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -50,10 +52,12 @@ import com.example.R
 import com.example.ui.screens.ChatDetailScreen
 import com.example.ui.screens.ChatsScreen
 import com.example.ui.screens.DetailsScreen
+import com.example.ui.screens.MediaScreen
 import com.example.ui.screens.PermissionScreen
 
 object AppRoutes {
     const val ROUTE_CHATS = "chats"
+    const val ROUTE_MEDIA = "media"
     const val ROUTE_DETAILS = "details"
     const val ROUTE_PERMISSION = "permission"
     const val ROUTE_CHAT_DETAIL = "chat_detail/{chatId}"
@@ -76,6 +80,13 @@ private val TOP_DESTINATIONS = listOf(
         selectedIcon = Icons.Filled.Chat,
         unselectedIcon = Icons.Outlined.ChatBubbleOutline,
         testTag = "nav_tab_chats",
+    ),
+    TopDestination(
+        route = AppRoutes.ROUTE_MEDIA,
+        labelRes = R.string.nav_media,
+        selectedIcon = Icons.Filled.PhotoLibrary,
+        unselectedIcon = Icons.Outlined.PhotoLibrary,
+        testTag = "nav_tab_media",
     ),
     TopDestination(
         route = AppRoutes.ROUTE_DETAILS,
@@ -103,6 +114,7 @@ fun ChatReaderNavHost(
     val currentRoute = currentDestination?.route
 
     val chatsUiState by viewModel.chatsUiState.collectAsStateWithLifecycle()
+    val mediaUiState by viewModel.mediaUiState.collectAsStateWithLifecycle()
     val detailsUiState by viewModel.detailsUiState.collectAsStateWithLifecycle()
     val systemState by viewModel.systemState.collectAsStateWithLifecycle()
 
@@ -141,12 +153,21 @@ fun ChatReaderNavHost(
             arrayOf(
                 "text/plain",
                 "application/zip",
+                "application/json",
                 "image/*",
                 "video/*",
                 "audio/*",
                 "application/pdf",
             )
         )
+    }
+
+    val backupCreateLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { targetUri ->
+        if (targetUri != null) {
+            viewModel.exportBackupToUri(targetUri)
+        }
     }
 
     LifecycleResumeEffect(Unit) {
@@ -156,6 +177,7 @@ fun ChatReaderNavHost(
 
     val showTopLevelChrome = currentRoute in setOf(
         AppRoutes.ROUTE_CHATS,
+        AppRoutes.ROUTE_MEDIA,
         AppRoutes.ROUTE_DETAILS,
         AppRoutes.ROUTE_PERMISSION,
     )
@@ -263,6 +285,19 @@ fun ChatReaderNavHost(
                         )
                     }
 
+                    composable(AppRoutes.ROUTE_MEDIA) {
+                        MediaScreen(
+                            uiState = mediaUiState,
+                            onSelectFilter = viewModel::selectMediaFilter,
+                            onOpenChat = { chatId ->
+                                navController.navigate(AppRoutes.chatDetail(chatId))
+                            },
+                            onConnectFolderClick = launchFolderPicker,
+                            onSyncFolderClick = viewModel::syncConnectedFolder,
+                            onImportFilesClick = launchFilePicker,
+                        )
+                    }
+
                     composable(AppRoutes.ROUTE_DETAILS) {
                         DetailsScreen(
                             uiState = detailsUiState,
@@ -280,9 +315,11 @@ fun ChatReaderNavHost(
                             onVoicePermissionChanged = viewModel::refreshSystemStatus,
                             onOpenAppNotificationSettings = viewModel::openWhatsAppNotificationSettings,
                             onOpenOwnAppDetails = viewModel::openOwnAppDetailsSettings,
+                            onOpenBatterySettings = viewModel::openBatteryOptimizationSettings,
                             onConnectWhatsAppFolder = launchFolderPicker,
                             onSyncWhatsAppFolder = viewModel::syncConnectedFolder,
                             onImportChatOrMediaFiles = launchFilePicker,
+                            onSaveBackupToStorage = { backupCreateLauncher.launch("ChatReader_Backup.json") },
                             onClearAllData = viewModel::clearAllData,
                         )
                     }
@@ -293,8 +330,7 @@ fun ChatReaderNavHost(
                             navArgument("chatId") { type = NavType.StringType },
                         ),
                     ) { entry ->
-                        val encodedId = entry.arguments?.getString("chatId").orEmpty()
-                        val chatId = remember(encodedId) { Uri.decode(encodedId) }
+                        val chatId = entry.arguments?.getString("chatId").orEmpty()
                         val detailState by remember(chatId) {
                             viewModel.observeChatDetail(chatId)
                         }.collectAsStateWithLifecycle(

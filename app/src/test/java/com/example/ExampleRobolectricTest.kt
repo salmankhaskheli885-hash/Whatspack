@@ -42,6 +42,18 @@ private class InMemoryChatDao : ChatDao {
             list.sortedWith(compareByDescending<MessageEntity> { it.timestamp }.thenByDescending { it.id }).take(limit)
         }
 
+    override fun observeAllMediaMessages(): Flow<List<MessageEntity>> =
+        messagesFlow.map { list ->
+            list.filter {
+                it.messageType in setOf(
+                    MessageTypes.IMAGE,
+                    MessageTypes.VIDEO,
+                    MessageTypes.VOICE,
+                    MessageTypes.DOCUMENT,
+                ) || it.isViewOnce || it.mediaFilePath != null
+            }.sortedWith(compareByDescending<MessageEntity> { it.timestamp }.thenByDescending { it.id })
+        }
+
     override fun observeTotalMessageCount(): Flow<Int> = messagesFlow.map { it.size }
 
     override fun observeDeletedMessageCount(): Flow<Int> =
@@ -96,15 +108,39 @@ private class InMemoryChatDao : ChatDao {
         }
     }
 
+    override suspend fun attachMediaToMessage(
+        dedupKey: String,
+        mediaFilePath: String,
+        mediaDuration: String?,
+    ) {
+        messagesFlow.value = messagesFlow.value.map {
+            if (it.dedupKey == dedupKey && it.mediaFilePath.isNullOrBlank()) {
+                it.copy(
+                    mediaFilePath = mediaFilePath,
+                    mediaDuration = it.mediaDuration ?: mediaDuration,
+                )
+            } else {
+                it
+            }
+        }
+    }
+
     override suspend fun updateChatDeletedCount(chatId: String, deletedCount: Int) {
         chatsFlow.value = chatsFlow.value.map {
             if (it.chatId == chatId) it.copy(deletedCount = deletedCount) else it
         }
     }
 
-    override suspend fun upsertChat(chat: ChatEntity) {
-        val updated = chatsFlow.value.filterNot { it.chatId == chat.chatId } + chat
-        chatsFlow.value = updated
+    override suspend fun insertChatIfAbsent(chat: ChatEntity): Long {
+        if (chatsFlow.value.any { it.chatId == chat.chatId }) return -1L
+        chatsFlow.value = chatsFlow.value + chat
+        return 1L
+    }
+
+    override suspend fun updateChat(chat: ChatEntity) {
+        chatsFlow.value = chatsFlow.value.map {
+            if (it.chatId == chat.chatId) chat else it
+        }
     }
 
     override suspend fun insertMessage(message: MessageEntity): Long {
@@ -270,5 +306,94 @@ class ChatRepositoryTest {
         repository.deleteChat(parsed.chatId)
         assertTrue(repository.allChats.first().isEmpty())
         assertEquals(0, repository.mediaSavedCount.first())
+    }
+
+    @Test
+    fun `repository retains all messages inside a chat across multiple inserts and updates`() = runTest {
+        val repository = ChatRepository(InMemoryChatDao())
+        val first = WhatsAppNotificationParser.parse(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "k1",
+                postTime = 1_764_200_000_000L,
+                flags = 0,
+                title = "My Tel",
+                text = "First message",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        ).first()
+        val second = WhatsAppNotificationParser.parse(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "k2",
+                postTime = 1_764_200_010_000L,
+                flags = 0,
+                title = "My Tel",
+                text = "Second message",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        ).first()
+        val third = WhatsAppNotificationParser.parse(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "k3",
+                postTime = 1_764_200_020_000L,
+                flags = 0,
+                title = "My Tel",
+                text = "Third message",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        ).first()
+
+        assertTrue(repository.saveIncomingMessage(first))
+        assertTrue(repository.saveIncomingMessage(second))
+        assertTrue(repository.saveIncomingMessage(third))
+
+        val chat = repository.allChats.first().single()
+        assertEquals(3, chat.messageCount)
+        assertEquals("Third message", chat.lastMessageText)
+
+        val messages = repository.observeMessagesForChat(chat.chatId).first()
+        assertEquals(3, messages.size)
+        assertEquals(listOf("First message", "Second message", "Third message"), messages.map { it.body })
+    }
+
+    @Test
+    fun `repository attaches SAF media to existing notification message and exposes it in allMediaMessages`() = runTest {
+        val repository = ChatRepository(InMemoryChatDao())
+        val photoEvent = WhatsAppNotificationParser.parse(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "photo_notif",
+                postTime = 1_764_300_000_000L,
+                flags = 0,
+                title = "Bilal",
+                text = "📷 Photo",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        ).first()
+
+        assertTrue(repository.saveIncomingMessage(photoEvent))
+        repository.attachMediaToMessage(
+            dedupKey = photoEvent.dedupKey,
+            mediaFilePath = "/data/user/0/com.example/files/captured_media/IMG-01.jpg",
+            mediaDuration = null,
+        )
+
+        val mediaItems = repository.allMediaMessages.first()
+        assertEquals(1, mediaItems.size)
+        assertEquals("/data/user/0/com.example/files/captured_media/IMG-01.jpg", mediaItems.first().mediaFilePath)
     }
 }

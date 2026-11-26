@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -23,6 +24,12 @@ interface ChatDao {
 
     @Query("SELECT * FROM messages ORDER BY timestamp DESC, id DESC LIMIT :limit")
     fun observeRecentMessages(limit: Int = 100): Flow<List<MessageEntity>>
+
+    @Query(
+        "SELECT * FROM messages WHERE messageType IN ('IMAGE', 'VIDEO', 'VOICE', 'DOCUMENT') " +
+            "OR isViewOnce = 1 OR mediaFilePath IS NOT NULL ORDER BY timestamp DESC, id DESC"
+    )
+    fun observeAllMediaMessages(): Flow<List<MessageEntity>>
 
     @Query("SELECT COUNT(*) FROM messages")
     fun observeTotalMessageCount(): Flow<Int>
@@ -75,11 +82,21 @@ interface ChatDao {
     @Query("UPDATE messages SET deletedInWhatsApp = 1, deletedAtTimestamp = :deletedAt WHERE id = :messageId")
     suspend fun markMessageDeletedInWhatsApp(messageId: Long, deletedAt: Long)
 
+    @Query(
+        "UPDATE messages SET mediaFilePath = :mediaFilePath, " +
+            "mediaDuration = COALESCE(mediaDuration, :mediaDuration) " +
+            "WHERE dedupKey = :dedupKey AND (mediaFilePath IS NULL OR mediaFilePath = '')"
+    )
+    suspend fun attachMediaToMessage(dedupKey: String, mediaFilePath: String, mediaDuration: String?)
+
     @Query("UPDATE chats SET deletedCount = :deletedCount WHERE chatId = :chatId")
     suspend fun updateChatDeletedCount(chatId: String, deletedCount: Int)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertChat(chat: ChatEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertChatIfAbsent(chat: ChatEntity): Long
+
+    @Update
+    suspend fun updateChat(chat: ChatEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertMessage(message: MessageEntity): Long
@@ -132,7 +149,7 @@ interface ChatDao {
 
         val existingChat = getChatOnce(chatId)
         if (existingChat == null) {
-            upsertChat(
+            insertChatIfAbsent(
                 ChatEntity(
                     chatId = chatId,
                     title = chatTitle,
@@ -174,24 +191,23 @@ interface ChatDao {
         }
 
         val currentChat = getChatOnce(chatId)
-        val shouldUpdatePreview = currentChat == null || timestamp >= currentChat.lastTimestamp
-        upsertChat(
-            ChatEntity(
-                chatId = chatId,
-                title = chatTitle,
-                packageName = packageName,
-                appLabel = appLabel,
-                isGroup = isGroup || (currentChat?.isGroup == true),
-                lastMessageText = if (shouldUpdatePreview) body else currentChat.lastMessageText,
-                lastSenderName = if (shouldUpdatePreview) senderName else currentChat.lastSenderName,
-                lastTimestamp = if (shouldUpdatePreview) timestamp else currentChat.lastTimestamp,
-                messageCount = (currentChat?.messageCount ?: 0) + 1,
-                unreadCount = (currentChat?.unreadCount ?: 0) + 1,
-                isPinned = currentChat?.isPinned ?: false,
-                deletedCount = currentChat?.deletedCount ?: 0,
-                lastMessageType = if (shouldUpdatePreview) messageType else currentChat.lastMessageType,
+        if (currentChat != null) {
+            val shouldUpdatePreview = timestamp >= currentChat.lastTimestamp
+            updateChat(
+                currentChat.copy(
+                    title = chatTitle,
+                    packageName = packageName,
+                    appLabel = appLabel,
+                    isGroup = isGroup || currentChat.isGroup,
+                    lastMessageText = if (shouldUpdatePreview) body else currentChat.lastMessageText,
+                    lastSenderName = if (shouldUpdatePreview) senderName else currentChat.lastSenderName,
+                    lastTimestamp = if (shouldUpdatePreview) timestamp else currentChat.lastTimestamp,
+                    messageCount = currentChat.messageCount + 1,
+                    unreadCount = currentChat.unreadCount + 1,
+                    lastMessageType = if (shouldUpdatePreview) messageType else currentChat.lastMessageType,
+                )
             )
-        )
+        }
         return true
     }
 

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.UploadFile
@@ -79,9 +80,11 @@ fun PermissionScreen(
     onVoicePermissionChanged: () -> Unit,
     onOpenAppNotificationSettings: (String) -> Unit,
     onOpenOwnAppDetails: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onConnectWhatsAppFolder: () -> Unit,
     onSyncWhatsAppFolder: () -> Unit,
     onImportChatOrMediaFiles: () -> Unit,
+    onSaveBackupToStorage: () -> Unit,
     onClearAllData: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -401,7 +404,24 @@ fun PermissionScreen(
                                     modifier = Modifier.size(18.dp),
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Import Chat (.txt / .zip) or Media Files")
+                                Text("Import Chat (.txt / .zip / .json) or Media")
+                            }
+
+                            OutlinedButton(
+                                onClick = onSaveBackupToStorage,
+                                enabled = !systemState.isImporting,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("save_backup_storage_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.SaveAlt,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Save Permanent Backup to Phone Storage")
                             }
                         }
                     }
@@ -541,6 +561,13 @@ fun PermissionScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("Open ChatReader App Info (Restricted Settings)")
+                            }
+                            OutlinedButton(
+                                onClick = onOpenBatterySettings,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Keep Service Running (Battery Optimization)")
                             }
                         }
                     }

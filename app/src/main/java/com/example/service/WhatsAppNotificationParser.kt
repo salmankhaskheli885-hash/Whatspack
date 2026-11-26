@@ -56,8 +56,6 @@ object WhatsAppNotificationParser {
         "finished backup",
         "restoring media",
         "deleting messages",
-        "new messages",
-        "messages from",
     )
 
     private val SUMMARY_COUNT_LINE_REGEX = Regex(
@@ -242,7 +240,21 @@ object WhatsAppNotificationParser {
             }
         }
 
-        if (isSummary) return ParsedNotificationResult()
+        if (isSummary) {
+            val summaryLines = payload.bigText
+                ?.lineSequence()
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() && it.contains(':') && !isNoiseBody(it) }
+                ?.toList()
+                .orEmpty()
+            if (summaryLines.isNotEmpty()) {
+                val parsedSummary = parseTextLines(payload.copy(textLines = summaryLines), appLabel)
+                if (parsedSummary.messages.isNotEmpty() || parsedSummary.deletedSignals.isNotEmpty()) {
+                    return parsedSummary
+                }
+            }
+            return ParsedNotificationResult()
+        }
 
         // 3. Standard EXTRA_TITLE + EXTRA_BIG_TEXT / EXTRA_TEXT fallback
         val rawTitle = cleanTitle(payload.title)

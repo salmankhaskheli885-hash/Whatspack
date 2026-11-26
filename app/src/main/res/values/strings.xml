@@ -2,6 +2,7 @@
     <string name="app_name">ChatReader</string>
     <string name="listener_service_name">ChatReader WhatsApp Listener</string>
     <string name="nav_chats">Chats</string>
+    <string name="nav_media">Media</string>
     <string name="nav_details">Details</string>
     <string name="nav_permission">Permission</string>
     <string name="read_only_badge">Read-Only</string>

@@ -42,6 +42,7 @@ data class DeletedMessageSignal(
 class ChatRepository(private val chatDao: ChatDao) {
     val allChats: Flow<List<ChatEntity>> = chatDao.observeAllChats()
     val recentMessages: Flow<List<MessageEntity>> = chatDao.observeRecentMessages()
+    val allMediaMessages: Flow<List<MessageEntity>> = chatDao.observeAllMediaMessages()
     val totalMessageCount: Flow<Int> = chatDao.observeTotalMessageCount()
     val deletedMessageCount: Flow<Int> = chatDao.observeDeletedMessageCount()
     val voiceMessageCount: Flow<Int> = chatDao.observeVoiceMessageCount()
@@ -73,6 +74,18 @@ class ChatRepository(private val chatDao: ChatDao) {
             isViewOnce = parsed.isViewOnce,
             mediaFilePath = parsed.mediaFilePath,
             checkRecentDuplicate = checkRecentDuplicate,
+        )
+    }
+
+    suspend fun attachMediaToMessage(
+        dedupKey: String,
+        mediaFilePath: String,
+        mediaDuration: String? = null,
+    ) {
+        chatDao.attachMediaToMessage(
+            dedupKey = dedupKey,
+            mediaFilePath = mediaFilePath,
+            mediaDuration = mediaDuration,
         )
     }
 

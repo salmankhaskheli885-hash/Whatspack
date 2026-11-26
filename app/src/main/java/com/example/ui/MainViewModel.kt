@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -29,6 +30,15 @@ enum class ChatFilter(val label: String) {
     GROUPS("Groups"),
     WHATSAPP("WhatsApp"),
     BUSINESS("WA Business"),
+}
+
+enum class MediaFilter(val label: String) {
+    ALL("All"),
+    PHOTOS("Photos"),
+    VIDEOS("Videos"),
+    VOICE("Voice"),
+    ONCE("View Once"),
+    DELETED("Deleted"),
 }
 
 data class SystemPermissionState(
@@ -72,11 +82,20 @@ data class ChatDetailUiState(
     val isNotificationAccessGranted: Boolean = false,
 )
 
+data class MediaUiState(
+    val items: List<MessageEntity> = emptyList(),
+    val totalMediaCount: Int = 0,
+    val selectedFilter: MediaFilter = MediaFilter.ALL,
+    val chatLookup: Map<String, ChatEntity> = emptyMap(),
+    val systemState: SystemPermissionState = SystemPermissionState(),
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = (application as ChatReaderApp).repository
 
     private val searchQuery = MutableStateFlow("")
     private val selectedFilter = MutableStateFlow(ChatFilter.ALL)
+    private val selectedMediaFilter = MutableStateFlow(MediaFilter.ALL)
     private val permissionGranted = MutableStateFlow(
         ListenerStatusTracker.isNotificationAccessGranted(application)
     )
@@ -216,6 +235,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = DetailsUiState(systemState = systemState.value),
     )
 
+    val mediaUiState: StateFlow<MediaUiState> = combine(
+        repository.allMediaMessages,
+        repository.allChats,
+        selectedMediaFilter,
+        systemState,
+    ) { allMedia, allChats, filter, sys ->
+        val filtered = allMedia.filter { msg ->
+            when (filter) {
+                MediaFilter.ALL -> true
+                MediaFilter.PHOTOS -> msg.messageType == MessageTypes.IMAGE
+                MediaFilter.VIDEOS -> msg.messageType == MessageTypes.VIDEO
+                MediaFilter.VOICE -> msg.messageType == MessageTypes.VOICE
+                MediaFilter.ONCE -> msg.isViewOnce
+                MediaFilter.DELETED -> msg.deletedInWhatsApp
+            }
+        }
+        MediaUiState(
+            items = filtered,
+            totalMediaCount = allMedia.size,
+            selectedFilter = filter,
+            chatLookup = allChats.associateBy { it.chatId },
+            systemState = sys,
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = MediaUiState(systemState = systemState.value),
+    )
+
     fun observeChatDetail(chatId: String): Flow<ChatDetailUiState> {
         return combine(
             repository.observeChat(chatId),
@@ -240,11 +288,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ListenerStatusTracker.requestRebindIfNeeded(context)
 
         val lastSync = latestVault.lastSyncTimestamp ?: 0L
-        if (latestVault.treeUriString != null &&
-            !isImporting.value &&
-            System.currentTimeMillis() - lastSync > 60_000L
-        ) {
-            syncConnectedFolder()
+        if (latestVault.treeUriString != null && !isImporting.value) {
+            viewModelScope.launch {
+                val savedCount = repository.totalMessageCount.first()
+                if (savedCount == 0 || System.currentTimeMillis() - lastSync > 60_000L) {
+                    syncConnectedFolder()
+                }
+            }
         }
     }
 
@@ -303,6 +353,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         importStatusMessage.value = null
     }
 
+    fun exportBackupToUri(targetUri: Uri) {
+        if (isImporting.value) return
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            isImporting.value = true
+            importStatusMessage.value = "Saving backup to phone storage..."
+            val msg = runCatching {
+                com.example.service.ChatBackupManager.exportBackupToUri(context, targetUri, repository)
+            }.getOrElse { err ->
+                "Backup failed: ${err.localizedMessage ?: "Unknown error"}"
+            }
+            importStatusMessage.value = msg
+            isImporting.value = false
+        }
+    }
+
     fun openNotificationSettings() {
         ListenerStatusTracker.openNotificationAccessSettings(getApplication())
     }
@@ -315,12 +381,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ListenerStatusTracker.openOwnAppDetailsSettings(getApplication())
     }
 
+    fun openBatteryOptimizationSettings() {
+        ListenerStatusTracker.openBatteryOptimizationSettings(getApplication())
+    }
+
     fun updateSearchQuery(query: String) {
         searchQuery.value = query
     }
 
     fun selectFilter(filter: ChatFilter) {
         selectedFilter.value = filter
+    }
+
+    fun selectMediaFilter(filter: MediaFilter) {
+        selectedMediaFilter.value = filter
     }
 
     fun markChatAsRead(chatId: String) {
@@ -344,6 +418,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearAllData() {
         viewModelScope.launch {
             repository.clearAll()
+            WhatsAppStorageImporter.clearCapturedSafTracking(getApplication())
         }
     }
 }

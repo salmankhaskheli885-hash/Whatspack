@@ -249,6 +249,8 @@ fun ReadOnlyBadge(
                 text = stringResource(R.string.read_only_badge),
                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = fg,
+                maxLines = 1,
+                softWrap = false,
             )
         }
     }

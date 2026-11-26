@@ -150,4 +150,22 @@ object ListenerStatusTracker {
         }
         runCatching { context.startActivity(intent) }
     }
+
+    fun openBatteryOptimizationSettings(context: Context) {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        }
+        runCatching {
+            context.startActivity(intent)
+        }.onFailure {
+            openOwnAppDetailsSettings(context)
+        }
+    }
 }
