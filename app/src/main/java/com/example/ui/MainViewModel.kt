@@ -291,7 +291,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (latestVault.treeUriString != null && !isImporting.value) {
             viewModelScope.launch {
                 val savedCount = repository.totalMessageCount.first()
-                if (savedCount == 0 || System.currentTimeMillis() - lastSync > 60_000L) {
+                if (savedCount == 0 || System.currentTimeMillis() - lastSync > 10_000L) {
                     syncConnectedFolder()
                 }
             }

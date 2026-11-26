@@ -4,11 +4,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.widget.MediaController
 import android.widget.Toast
 import android.widget.VideoView
+import java.io.FileInputStream
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -59,7 +63,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -300,10 +307,29 @@ fun VoiceMessageBubbleContent(
     val barHeights = listOf(8, 16, 12, 22, 18, 10, 24, 15, 20, 11, 17, 9, 21, 14, 10)
     val context = LocalContext.current
     val hasPlayableAudio = remember(mediaFilePath) {
-        !mediaFilePath.isNullOrBlank() && File(mediaFilePath).exists()
+        !mediaFilePath.isNullOrBlank() && File(mediaFilePath).let { it.exists() && it.length() > 0L }
     }
     var isPlaying by remember(mediaFilePath) { mutableStateOf(false) }
     var mediaPlayer by remember(mediaFilePath) { mutableStateOf<MediaPlayer?>(null) }
+    var playbackProgress by remember(mediaFilePath) { mutableFloatStateOf(0f) }
+    var currentPositionMs by remember(mediaFilePath) { mutableIntStateOf(0) }
+    var totalDurationMs by remember(mediaFilePath) { mutableIntStateOf(0) }
+
+    LaunchedEffect(isPlaying, mediaPlayer) {
+        while (isPlaying) {
+            val player = mediaPlayer
+            if (player != null) {
+                runCatching {
+                    val dur = player.duration.coerceAtLeast(1)
+                    val pos = player.currentPosition.coerceIn(0, dur)
+                    totalDurationMs = dur
+                    currentPositionMs = pos
+                    playbackProgress = pos.toFloat() / dur.toFloat()
+                }
+            }
+            delay(150L)
+        }
+    }
 
     DisposableEffect(mediaFilePath) {
         onDispose {
@@ -313,43 +339,94 @@ fun VoiceMessageBubbleContent(
             }
             mediaPlayer = null
             isPlaying = false
+            playbackProgress = 0f
+            currentPositionMs = 0
         }
     }
 
     val togglePlayback = {
-        if (hasPlayableAudio && mediaFilePath != null) {
-            if (isPlaying) {
-                runCatching { mediaPlayer?.pause() }
-                isPlaying = false
-            } else {
-                val player = mediaPlayer
-                if (player != null) {
-                    runCatching {
-                        player.start()
-                        isPlaying = true
-                    }.onFailure {
-                        Toast.makeText(context, "Unable to play audio", Toast.LENGTH_SHORT).show()
+        if (!hasPlayableAudio || mediaFilePath == null) {
+            Toast.makeText(
+                context,
+                "Audio file not linked yet — tap Sync folder or play from Media tab",
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else if (isPlaying) {
+            runCatching { mediaPlayer?.pause() }
+            isPlaying = false
+        } else {
+            val existing = mediaPlayer
+            if (existing != null) {
+                val started = runCatching {
+                    if (existing.currentPosition >= existing.duration - 100) {
+                        existing.seekTo(0)
                     }
-                } else {
-                    runCatching {
-                        MediaPlayer().apply {
-                            setDataSource(mediaFilePath)
-                            setOnCompletionListener { isPlaying = false }
-                            prepare()
-                            start()
-                            mediaPlayer = this
-                            isPlaying = true
+                    existing.start()
+                    isPlaying = true
+                    true
+                }.getOrDefault(false)
+                if (!started) {
+                    runCatching { existing.release() }
+                    mediaPlayer = null
+                }
+            }
+            if (!isPlaying && mediaPlayer == null) {
+                runCatching {
+                    val file = File(mediaFilePath)
+                    val player = MediaPlayer().apply {
+                        setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build()
+                        )
+                        FileInputStream(file).use { fis ->
+                            setDataSource(fis.fd)
                         }
-                    }.onFailure {
-                        Toast.makeText(context, "Unsupported audio format on this device", Toast.LENGTH_SHORT).show()
+                        setOnCompletionListener {
+                            isPlaying = false
+                            playbackProgress = 0f
+                            currentPositionMs = 0
+                            runCatching { it.seekTo(0) }
+                        }
+                        setOnErrorListener { mp, _, _ ->
+                            isPlaying = false
+                            runCatching { mp.release() }
+                            mediaPlayer = null
+                            openSavedFileWithChooser(context, mediaFilePath, "audio/*", "Play voice audio")
+                            true
+                        }
+                        prepare()
+                        totalDurationMs = this.duration.coerceAtLeast(0)
+                        start()
                     }
+                    mediaPlayer = player
+                    isPlaying = true
+                }.onFailure {
+                    isPlaying = false
+                    openSavedFileWithChooser(context, mediaFilePath, "audio/*", "Play voice audio")
                 }
             }
         }
     }
 
+    val displayTimer = remember(isPlaying, currentPositionMs, totalDurationMs, duration) {
+        if (isPlaying || currentPositionMs > 0) {
+            val sec = currentPositionMs / 1000
+            String.format(Locale.US, "%d:%02d", sec / 60, sec % 60)
+        } else if (totalDurationMs > 0) {
+            val sec = totalDurationMs / 1000
+            String.format(Locale.US, "%d:%02d", sec / 60, sec % 60)
+        } else {
+            duration
+        }
+    }
+
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { togglePlayback() },
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
     ) {
@@ -365,8 +442,7 @@ fun VoiceMessageBubbleContent(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .then(if (hasPlayableAudio) Modifier.clickable { togglePlayback() } else Modifier),
+                        .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -392,9 +468,9 @@ fun VoiceMessageBubbleContent(
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
-                        if (!duration.isNullOrBlank()) {
+                        if (!displayTimer.isNullOrBlank()) {
                             Text(
-                                text = duration,
+                                text = displayTimer,
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -405,7 +481,9 @@ fun VoiceMessageBubbleContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
-                        barHeights.forEach { heightVal ->
+                        barHeights.forEachIndexed { idx, heightVal ->
+                            val barProgress = (idx + 1).toFloat() / barHeights.size.toFloat()
+                            val activeBar = isPlaying && playbackProgress >= barProgress
                             Box(
                                 modifier = Modifier
                                     .width(3.dp)
@@ -413,7 +491,7 @@ fun VoiceMessageBubbleContent(
                                     .clip(RoundedCornerShape(2.dp))
                                     .background(
                                         MaterialTheme.colorScheme.primary.copy(
-                                            alpha = if (isPlaying) 1f else 0.72f,
+                                            alpha = if (activeBar) 1f else if (hasPlayableAudio) 0.45f else 0.3f,
                                         )
                                     ),
                             )
@@ -423,10 +501,10 @@ fun VoiceMessageBubbleContent(
             }
 
             Text(
-                text = if (hasPlayableAudio) {
-                    "$body • Tap play to listen offline"
-                } else {
-                    "$body • Voice note detected"
+                text = when {
+                    isPlaying -> "Playing offline • Tap to pause"
+                    hasPlayableAudio -> "$body • Tap to play offline"
+                    else -> "$body • Sync folder to attach audio"
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -518,7 +596,7 @@ fun SavedMediaPreviewCard(
     }
     val bitmap = remember(filePath, messageType, fileExists) {
         if (fileExists && messageType == MessageTypes.IMAGE && filePath != null) {
-            runCatching { BitmapFactory.decodeFile(filePath) }.getOrNull()
+            decodeSampledBitmap(filePath, maxDimPx = 1280)
         } else {
             null
         }
@@ -678,7 +756,7 @@ fun FullScreenMediaDialog(
 ) {
     val bitmap = remember(filePath, messageType) {
         if (messageType != MessageTypes.VIDEO) {
-            runCatching { BitmapFactory.decodeFile(filePath) }.getOrNull()
+            decodeSampledBitmap(filePath, maxDimPx = 2048)
         } else {
             null
         }
@@ -735,15 +813,38 @@ fun FullScreenMediaDialog(
     }
 }
 
+private fun decodeSampledBitmap(filePath: String, maxDimPx: Int): Bitmap? {
+    return runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(filePath, bounds)
+        var sample = 1
+        val maxSide = maxOf(bounds.outWidth, bounds.outHeight)
+        while (maxSide / sample > maxDimPx) {
+            sample *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        BitmapFactory.decodeFile(filePath, opts)
+    }.getOrNull()
+}
+
 private fun openSavedDocument(context: Context, filePath: String) {
+    openSavedFileWithChooser(context, filePath, "*/*", "Open saved file")
+}
+
+private fun openSavedFileWithChooser(
+    context: Context,
+    filePath: String,
+    mimeType: String,
+    chooserTitle: String,
+) {
     runCatching {
         val file = File(filePath)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "*/*")
+            setDataAndType(uri, mimeType)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "Open saved file"))
+        context.startActivity(Intent.createChooser(intent, chooserTitle))
     }.onFailure {
         Toast.makeText(context, "No app available to open this file", Toast.LENGTH_SHORT).show()
     }

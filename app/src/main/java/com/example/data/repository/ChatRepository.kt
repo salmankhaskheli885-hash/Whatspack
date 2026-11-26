@@ -37,6 +37,10 @@ data class DeletedMessageSignal(
     val chatId: String,
     val notificationKey: String,
     val deletedAtTimestamp: Long,
+    val chatTitle: String = "",
+    val packageName: String = "com.whatsapp",
+    val appLabel: String = "WhatsApp",
+    val isGroup: Boolean = false,
 )
 
 class ChatRepository(private val chatDao: ChatDao) {
@@ -94,6 +98,10 @@ class ChatRepository(private val chatDao: ChatDao) {
             chatId = signal.chatId,
             notificationKey = signal.notificationKey,
             deletedAt = signal.deletedAtTimestamp,
+            chatTitle = signal.chatTitle,
+            packageName = signal.packageName,
+            appLabel = signal.appLabel,
+            isGroup = signal.isGroup,
         )
     }
 

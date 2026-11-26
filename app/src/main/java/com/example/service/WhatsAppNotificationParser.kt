@@ -96,7 +96,10 @@ object WhatsAppNotificationParser {
         return normalized in DELETED_MESSAGE_MARKERS ||
             "$normalized." in DELETED_MESSAGE_MARKERS ||
             normalized.contains("this message was deleted") ||
-            normalized.contains("you deleted this message")
+            normalized.contains("this message has been deleted") ||
+            normalized.contains("you deleted this message") ||
+            normalized == "deleted message" ||
+            normalized.endsWith("message deleted")
     }
 
     fun fromStatusBarNotification(sbn: StatusBarNotification): List<ParsedWhatsAppMessage> {
@@ -201,6 +204,10 @@ object WhatsAppNotificationParser {
                         chatId = chatId,
                         notificationKey = payload.notificationKey,
                         deletedAtTimestamp = ts,
+                        chatTitle = resolvedChatTitle,
+                        packageName = payload.packageName,
+                        appLabel = appLabel,
+                        isGroup = isGroup,
                     )
                     return@forEach
                 }
@@ -306,6 +313,10 @@ object WhatsAppNotificationParser {
                         chatId = chatId,
                         notificationKey = payload.notificationKey,
                         deletedAtTimestamp = ts,
+                        chatTitle = chatTitle,
+                        packageName = payload.packageName,
+                        appLabel = appLabel,
+                        isGroup = isGroup,
                     )
                 )
             )
@@ -382,6 +393,10 @@ object WhatsAppNotificationParser {
                     chatId = chatId,
                     notificationKey = payload.notificationKey,
                     deletedAtTimestamp = ts,
+                    chatTitle = chatTitle,
+                    packageName = payload.packageName,
+                    appLabel = appLabel,
+                    isGroup = isGroup,
                 )
                 return@forEachIndexed
             }

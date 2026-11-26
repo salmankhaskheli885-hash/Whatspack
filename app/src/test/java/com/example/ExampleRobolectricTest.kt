@@ -99,6 +99,11 @@ private class InMemoryChatDao : ChatDao {
             .filter { it.chatId == chatId && !it.deletedInWhatsApp }
             .maxWithOrNull(compareBy<MessageEntity> { it.timestamp }.thenBy { it.id })
 
+    override suspend fun getLatestMessageForChat(chatId: String): MessageEntity? =
+        messagesFlow.value
+            .filter { it.chatId == chatId }
+            .maxWithOrNull(compareBy<MessageEntity> { it.timestamp }.thenBy { it.id })
+
     override suspend fun countDeletedInChat(chatId: String): Int =
         messagesFlow.value.count { it.chatId == chatId && it.deletedInWhatsApp }
 
@@ -395,5 +400,38 @@ class ChatRepositoryTest {
         val mediaItems = repository.allMediaMessages.first()
         assertEquals(1, mediaItems.size)
         assertEquals("/data/user/0/com.example/files/captured_media/IMG-01.jpg", mediaItems.first().mediaFilePath)
+    }
+
+    @Test
+    fun `repository records deleted notice even when original message was missed`() = runTest {
+        val repository = ChatRepository(InMemoryChatDao())
+        val deletedOnly = WhatsAppNotificationParser.parseEvents(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "deleted_only_key",
+                postTime = 1_764_400_000_000L,
+                flags = 0,
+                title = "Usman",
+                text = "This message was deleted",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        )
+        assertEquals(1, deletedOnly.deletedSignals.size)
+        assertTrue(repository.markDeletedInWhatsApp(deletedOnly.deletedSignals.first()))
+        assertFalse(
+            repository.markDeletedInWhatsApp(
+                deletedOnly.deletedSignals.first().copy(deletedAtTimestamp = 1_764_400_005_000L)
+            )
+        )
+
+        val chat = repository.allChats.first().single()
+        assertEquals("Usman", chat.title)
+        assertEquals(1, chat.deletedCount)
+        val msgs = repository.observeMessagesForChat(chat.chatId).first()
+        assertEquals(1, msgs.size)
+        assertTrue(msgs.first().deletedInWhatsApp)
     }
 }

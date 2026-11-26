@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChatReader — Download Android APK</title>
+  <meta name="description" content="Download ChatReader Android APK to save WhatsApp & WhatsApp Business messages, voice notes, photos, videos, View Once, and deleted chats permanently offline." />
+  <style>
+    :root {
+      --primary: #008069;
+      --primary-dark: #005c4b;
+      --accent: #25d366;
+      --bg: #f4f7f6;
+      --surface: #ffffff;
+      --surface-soft: #eaf6f2;
+      --text: #111b21;
+      --muted: #54656f;
+      --border: #dce5e2;
+      --shadow: 0 12px 32px rgba(17, 27, 33, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .hero {
+      background: linear-gradient(145deg, var(--primary-dark) 0%, var(--primary) 60%, #0b967c 100%);
+      color: #ffffff;
+      padding: 48px 20px 64px;
+      text-align: center;
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+    }
+
+    .app-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+
+    .logo-wrap {
+      width: 84px;
+      height: 84px;
+      border-radius: 22px;
+      margin: 0 auto 18px;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+    }
+
+    h1 {
+      font-size: clamp(28px, 5vw, 42px);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+
+    .hero-sub {
+      max-width: 620px;
+      margin: 0 auto 28px;
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .download-card {
+      background: var(--surface);
+      color: var(--text);
+      max-width: 600px;
+      margin: -36px auto 32px;
+      border-radius: 22px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .meta-pill {
+      background: var(--surface-soft);
+      color: var(--primary-dark);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 16px 22px;
+      border-radius: 14px;
+      background: var(--primary);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 17px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: background 0.18s ease, transform 0.12s ease;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: #ffffff;
+      color: var(--primary-dark);
+      border: 1.5px solid var(--border);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .btn-secondary:hover {
+      background: var(--surface-soft);
+    }
+
+    .link-box {
+      margin-top: 14px;
+      background: #f8faf9;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 12.5px;
+      color: var(--muted);
+      word-break: break-all;
+      text-align: left;
+    }
+
+    .link-box strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .repo-input-row {
+      margin-top: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .repo-input-row input {
+      flex: 1;
+      min-width: 180px;
+      padding: 9px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .repo-input-row button {
+      padding: 9px 14px;
+      border-radius: 10px;
+      border: none;
+      background: var(--surface-soft);
+      color: var(--primary-dark);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .section {
+      padding: 12px 20px 36px;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--surface);
+      border-radius: 18px;
+      padding: 18px;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 14px rgba(17, 27, 33, 0.04);
+    }
+
+    .card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: var(--surface-soft);
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    .card h3 {
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .steps {
+      background: var(--surface);
+      border-radius: 20px;
+      padding: 22px;
+      border: 1px solid var(--border);
+      display: grid;
+      gap: 16px;
+    }
+
+    .step {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step h4 {
+      font-size: 15px;
+      margin-bottom: 2px;
+    }
+
+    .step p {
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+
+    .footer {
+      text-align: center;
+      padding: 24px 16px 40px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .status-toast {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--primary-dark);
+      font-weight: 600;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <div class="app-badge">Read-Only • Offline Storage • Android App</div>
+      <div class="logo-wrap" aria-hidden="true">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2C6.48 2 2 6.02 2 10.97c0 2.09.8 4.02 2.15 5.56L3 21.5l5.2-1.36A10.6 10.6 0 0 0 12 20c5.52 0 10-4.02 10-8.97S17.52 2 12 2Z" fill="#008069"/>
+          <path d="M8.5 11.2a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Zm3.5 0a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Zm3.5 0a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Z" fill="#FFFFFF"/>
+        </svg>
+      </div>
+      <h1>ChatReader</h1>
+      <p class="hero-sub">
+        Save WhatsApp &amp; WhatsApp Business messages, Voice Notes, Photos, Videos, View Once alerts, and Deleted Chats permanently on your phone.
+      </p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="download-card" aria-label="Download ChatReader APK">
+      <div class="meta-row">
+        <span class="meta-pill">Version 1.0</span>
+        <span class="meta-pill">Android 7.0+</span>
+        <span class="meta-pill">WhatsApp &amp; WA Business</span>
+      </div>
+
+      <a id="downloadBtn" class="btn-primary" href="ChatReader.apk" download="ChatReader.apk">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3v12m0 0 4.5-4.5M12 15 7.5 10.5M4 19h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Download ChatReader APK
+      </a>
+
+      <button id="copyLinkBtn" type="button" class="btn-secondary">
+        Copy Direct APK Download Link
+      </button>
+
+      <div id="statusToast" class="status-toast" aria-live="polite"></div>
+
+      <div class="link-box">
+        <strong>Direct Download URL:</strong>
+        <span id="directLinkText">Detecting link...</span>
+      </div>
+
+      <div id="repoConfigBox" class="repo-input-row" style="display:none;">
+        <input id="githubUserInput" type="text" placeholder="GitHub username (e.g. salmankhaskheli)" aria-label="GitHub username" />
+        <button id="applyRepoBtn" type="button">Set Link</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Key Features</h2>
+      <div class="grid">
+        <article class="card">
+          <div class="card-icon">&#128190;</div>
+          <h3>Permanent Local Vault</h3>
+          <p>Every incoming text message, photo, video, document, and voice note stays saved inside ChatReader until you manually delete it.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon">&#128465;</div>
+          <h3>Recover Deleted Messages</h3>
+          <p>Even if the sender selects "Delete for everyone", the saved message and media remain visible with a Deleted badge.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon">&#127908;</div>
+          <h3>Offline Voice &amp; Media Player</h3>
+          <p>Listen to WhatsApp &amp; WA Business voice notes and open saved photos/videos anytime in the dedicated Media tab.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon">&#128274;</div>
+          <h3>100% Read-Only &amp; Private</h3>
+          <p>No reply boxes, no blue ticks sent, and no cloud upload. Everything stays safely on your own phone.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">How To Install &amp; Setup (3 Easy Steps)</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <h4>Download &amp; Install APK</h4>
+            <p>Tap <strong>Download ChatReader APK</strong> above, open the downloaded file, and allow "Install unknown apps" if Android asks.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div>
+            <h4>Allow Notification Access</h4>
+            <p>Open ChatReader and tap <strong>Allow Notification Access</strong> so incoming text, voice alerts, and deleted messages save automatically.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div>
+            <h4>Allow WhatsApp Folder (USE THIS FOLDER)</h4>
+            <p>Tap <strong>Allow Folder Access</strong>, select <strong>Android &gt; media</strong> (or <strong>com.whatsapp</strong>), and press <strong>USE THIS FOLDER → Allow</strong> to save photos, videos, and voice notes.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    ChatReader • Offline Read-Only WhatsApp &amp; WA Business Viewer
+  </footer>
+
+  <script>
+    (function () {
+      const downloadBtn = document.getElementById("downloadBtn");
+      const copyLinkBtn = document.getElementById("copyLinkBtn");
+      const directLinkText = document.getElementById("directLinkText");
+      const statusToast = document.getElementById("statusToast");
+      const repoConfigBox = document.getElementById("repoConfigBox");
+      const githubUserInput = document.getElementById("githubUserInput");
+      const applyRepoBtn = document.getElementById("applyRepoBtn");
+
+      const host = window.location.hostname || "";
+      const pathParts = (window.location.pathname || "/").split("/").filter(Boolean);
+
+      function inferGitHubRepo() {
+        if (host.endsWith(".github.io")) {
+          const owner = host.replace(".github.io", "");
+          const repo = pathParts.length > 0 ? pathParts[0] : "Whatspack";
+          return { owner, repo };
+        }
+        return null;
+      }
+
+      function setLinks(url, isLocalApk) {
+        downloadBtn.href = url;
+        if (isLocalApk) {
+          downloadBtn.setAttribute("download", "ChatReader.apk");
+        } else {
+          downloadBtn.removeAttribute("download");
+        }
+        directLinkText.textContent = url;
+      }
+
+      const detected = inferGitHubRepo();
+      const releaseFallback = detected
+        ? `https://github.com/${detected.owner}/${detected.repo}/releases/latest/download/ChatReader.apk`
+        : null;
+
+      if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+        fetch("./ChatReader.apk", { method: "HEAD" })
+          .then((res) => {
+            if (res.ok) {
+              const absoluteUrl = new URL("./ChatReader.apk", window.location.href).href;
+              setLinks(absoluteUrl, true);
+            } else if (releaseFallback) {
+              setLinks(releaseFallback, false);
+            } else {
+              setLinks(new URL("./ChatReader.apk", window.location.href).href, true);
+              repoConfigBox.style.display = "flex";
+            }
+          })
+          .catch(() => {
+            if (releaseFallback) {
+              setLinks(releaseFallback, false);
+            } else {
+              repoConfigBox.style.display = "flex";
+              directLinkText.textContent = "Push to GitHub (Whatspack) or enter your GitHub username below to generate the release link.";
+            }
+          });
+      } else {
+        repoConfigBox.style.display = "flex";
+        directLinkText.textContent = "Enter your GitHub username below or deploy this site to GitHub Pages.";
+      }
+
+      applyRepoBtn.addEventListener("click", () => {
+        const user = (githubUserInput.value || "").trim();
+        if (!user) return;
+        const releaseUrl = `https://github.com/${encodeURIComponent(user)}/Whatspack/releases/latest/download/ChatReader.apk`;
+        setLinks(releaseUrl, false);
+        statusToast.textContent = "Direct GitHub Release APK link updated.";
+      });
+
+      copyLinkBtn.addEventListener("click", async () => {
+        const url = downloadBtn.href;
+        try {
+          await navigator.clipboard.writeText(url);
+          statusToast.textContent = "Download link copied!";
+        } catch (e) {
+          statusToast.textContent = url;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -84,28 +84,23 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
                     WhatsAppStorageImporter.getVaultFolderInfo(applicationContext).treeUriString != null
                 ) {
                     launch {
-                        delay(1_200L)
-                        var captured = WhatsAppStorageImporter.captureLatestMediaForNotification(
-                            context = applicationContext,
-                            messageType = enriched.messageType,
-                            packageName = enriched.packageName,
-                            timestamp = enriched.timestamp,
-                        )
-                        if (captured == null) {
-                            delay(2_200L)
-                            captured = WhatsAppStorageImporter.captureLatestMediaForNotification(
+                        val retryDelays = listOf(1_200L, 2_300L, 4_500L)
+                        for (waitMs in retryDelays) {
+                            delay(waitMs)
+                            val captured = WhatsAppStorageImporter.captureLatestMediaForNotification(
                                 context = applicationContext,
                                 messageType = enriched.messageType,
                                 packageName = enriched.packageName,
                                 timestamp = enriched.timestamp,
                             )
-                        }
-                        if (captured != null) {
-                            repository.attachMediaToMessage(
-                                dedupKey = enriched.dedupKey,
-                                mediaFilePath = captured.filePath,
-                                mediaDuration = captured.duration,
-                            )
+                            if (captured != null) {
+                                repository.attachMediaToMessage(
+                                    dedupKey = enriched.dedupKey,
+                                    mediaFilePath = captured.filePath,
+                                    mediaDuration = captured.duration,
+                                )
+                                break
+                            }
                         }
                     }
                 }

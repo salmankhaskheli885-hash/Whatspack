@@ -44,7 +44,8 @@ object WhatsAppStorageImporter {
     private const val KEY_LAST_SYNC_TS = "last_vault_sync_ts"
     private const val KEY_CAPTURED_SAF_SIGNATURES = "captured_saf_signatures"
     private const val MEDIA_DIR_NAME = "captured_media"
-    private const val MAX_FILES_PER_SYNC = 300
+    private const val MAX_FILES_PER_CATEGORY = 90
+    private const val MAX_TOTAL_FILES_PER_SYNC = 450
     private val safCaptureMutex = Mutex()
 
     fun getVaultFolderInfo(context: Context): VaultFolderInfo {
@@ -96,11 +97,28 @@ object WhatsAppStorageImporter {
             relativePath = "",
             depth = 0,
             out = collected,
+            maxFilesPerDirectory = 120,
         )
 
         val sorted = collected
             .sortedByDescending { it.lastModified }
-            .take(MAX_FILES_PER_SYNC)
+            .groupBy { item ->
+                val cat = classifyFileType(
+                    item.mimeType.lowercase(),
+                    item.displayName.lowercase(),
+                    item.relativePath,
+                ) ?: "other"
+                val biz = if (item.relativePath.lowercase().let { it.contains("business") || it.contains("w4b") }) {
+                    "w4b"
+                } else {
+                    "wa"
+                }
+                "$biz|$cat"
+            }
+            .values
+            .flatMap { group -> group.take(MAX_FILES_PER_CATEGORY) }
+            .sortedByDescending { it.lastModified }
+            .take(MAX_TOTAL_FILES_PER_SYNC)
 
         var imported = 0
         var skipped = 0
@@ -203,10 +221,12 @@ object WhatsAppStorageImporter {
             depth = 0,
             out = collected,
             skipSentFolder = true,
+            targetMessageType = messageType,
+            maxFilesPerDirectory = 120,
         )
 
-        val windowStart = timestamp - 20_000L
-        val windowEnd = timestamp + 60_000L
+        val windowStart = timestamp - 30_000L
+        val windowEnd = timestamp + 90_000L
         val preferBusiness = packageName == "com.whatsapp.w4b"
 
         val candidates = collected.filter { item ->
@@ -441,6 +461,13 @@ object WhatsAppStorageImporter {
         val relativePath: String,
     )
 
+    private data class DiscoveredSubDir(
+        val docId: String,
+        val name: String,
+        val lastModified: Long,
+        val relativePath: String,
+    )
+
     private fun traverseTree(
         context: Context,
         treeUri: Uri,
@@ -449,8 +476,10 @@ object WhatsAppStorageImporter {
         depth: Int,
         out: MutableList<DiscoveredDocFile>,
         skipSentFolder: Boolean = false,
+        targetMessageType: String? = null,
+        maxFilesPerDirectory: Int = 120,
     ) {
-        if (depth > 7 || out.size >= 3000) return
+        if (depth > 7 || out.size >= 4000) return
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -459,6 +488,9 @@ object WhatsAppStorageImporter {
             DocumentsContract.Document.COLUMN_LAST_MODIFIED,
             DocumentsContract.Document.COLUMN_SIZE,
         )
+        val subDirs = mutableListOf<DiscoveredSubDir>()
+        val filesHere = mutableListOf<DiscoveredDocFile>()
+
         runCatching {
             context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
                 val idIdx = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
@@ -467,10 +499,11 @@ object WhatsAppStorageImporter {
                 val modIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
                 val sizeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
 
-                while (cursor.moveToNext() && out.size < 3000) {
+                while (cursor.moveToNext()) {
                     val docId = cursor.getString(idIdx) ?: continue
                     val name = cursor.getString(nameIdx) ?: continue
                     val mime = cursor.getString(mimeIdx) ?: ""
+                    val mod = if (modIdx >= 0) cursor.getLong(modIdx) else 0L
                     val nextRel = if (relativePath.isBlank()) name else "$relativePath/$name"
 
                     if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
@@ -483,20 +516,69 @@ object WhatsAppStorageImporter {
                             lower == "backups" ||
                             lower == "databases" ||
                             lower == ".thumbs" ||
+                            lower == ".links" ||
                             lower.contains("stickers") ||
                             (skipSentFolder && lower == "sent")
                         ) {
                             continue
                         }
-                        traverseTree(context, treeUri, docId, nextRel, depth + 1, out, skipSentFolder)
+                        if (targetMessageType != null && !shouldEnterFolderForType(lower, targetMessageType)) {
+                            continue
+                        }
+                        subDirs += DiscoveredSubDir(docId, name, mod, nextRel)
                     } else {
-                        val mod = if (modIdx >= 0) cursor.getLong(modIdx) else 0L
                         val size = if (sizeIdx >= 0) cursor.getLong(sizeIdx) else 0L
-                        val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
-                        out += DiscoveredDocFile(docUri, name, mime, mod, size, nextRel)
+                        val nameLower = name.lowercase()
+                        if (size > 0L && nameLower != ".nomedia" && !nameLower.startsWith("tmp")) {
+                            val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+                            filesHere += DiscoveredDocFile(docUri, name, mime, mod, size, nextRel)
+                        }
                     }
                 }
             }
+        }
+
+        if (filesHere.isNotEmpty()) {
+            out += filesHere
+                .sortedByDescending { it.lastModified }
+                .take(maxFilesPerDirectory)
+        }
+
+        val orderedDirs = subDirs.sortedWith(
+            compareByDescending<DiscoveredSubDir> { it.lastModified }
+                .thenByDescending { it.name }
+        )
+        for (dir in orderedDirs) {
+            if (out.size >= 4000) break
+            traverseTree(
+                context = context,
+                treeUri = treeUri,
+                parentDocId = dir.docId,
+                relativePath = dir.relativePath,
+                depth = depth + 1,
+                out = out,
+                skipSentFolder = skipSentFolder,
+                targetMessageType = targetMessageType,
+                maxFilesPerDirectory = maxFilesPerDirectory,
+            )
+        }
+    }
+
+    private fun shouldEnterFolderForType(folderLower: String, targetType: String): Boolean {
+        val isImagesFolder = folderLower.contains("images") || folderLower.contains("profile photos") || folderLower.contains("wallpaper")
+        val isVideoFolder = folderLower.contains("video") || folderLower.contains("animated gifs")
+        val isVoiceFolder = folderLower.contains("voice notes") || folderLower.contains("whatsapp audio")
+        val isDocFolder = folderLower.contains("documents")
+        val isStatusFolder = folderLower.contains("statuses")
+        val isCategoryFolder = isImagesFolder || isVideoFolder || isVoiceFolder || isDocFolder || isStatusFolder
+        if (!isCategoryFolder) return true
+
+        return when (targetType) {
+            MessageTypes.IMAGE -> isImagesFolder || isStatusFolder
+            MessageTypes.VIDEO -> isVideoFolder || isStatusFolder
+            MessageTypes.VOICE -> isVoiceFolder
+            MessageTypes.DOCUMENT -> isDocFolder
+            else -> true
         }
     }
 

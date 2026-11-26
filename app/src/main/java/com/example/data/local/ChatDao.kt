@@ -76,6 +76,9 @@ interface ChatDao {
     )
     suspend fun getLatestActiveMessageForChat(chatId: String): MessageEntity?
 
+    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp DESC, id DESC LIMIT 1")
+    suspend fun getLatestMessageForChat(chatId: String): MessageEntity?
+
     @Query("SELECT COUNT(*) FROM messages WHERE chatId = :chatId AND deletedInWhatsApp = 1")
     suspend fun countDeletedInChat(chatId: String): Int
 
@@ -216,17 +219,85 @@ interface ChatDao {
         chatId: String,
         notificationKey: String,
         deletedAt: Long,
+        chatTitle: String = "",
+        packageName: String = "com.whatsapp",
+        appLabel: String = "WhatsApp",
+        isGroup: Boolean = false,
     ): Boolean {
         val target = if (notificationKey.isNotBlank()) {
             getLatestActiveMessageByKey(chatId, notificationKey)
                 ?: getLatestActiveMessageForChat(chatId)
         } else {
             getLatestActiveMessageForChat(chatId)
-        } ?: return false
+        }
+        if (target != null) {
+            markMessageDeletedInWhatsApp(target.id, deletedAt)
+            val updatedCount = countDeletedInChat(chatId)
+            updateChatDeletedCount(chatId, updatedCount)
+            return true
+        }
 
-        markMessageDeletedInWhatsApp(target.id, deletedAt)
-        val updatedCount = countDeletedInChat(chatId)
-        updateChatDeletedCount(chatId, updatedCount)
+        val latestAny = getLatestMessageForChat(chatId)
+        if (latestAny != null &&
+            latestAny.deletedInWhatsApp &&
+            kotlin.math.abs(deletedAt - (latestAny.deletedAtTimestamp ?: latestAny.timestamp)) <= 15_000L
+        ) {
+            return false
+        }
+
+        val resolvedTitle = chatTitle.ifBlank { chatId.substringAfter('|', "WhatsApp Chat") }
+        val existingChat = getChatOnce(chatId)
+        if (existingChat == null) {
+            insertChatIfAbsent(
+                ChatEntity(
+                    chatId = chatId,
+                    title = resolvedTitle,
+                    packageName = packageName,
+                    appLabel = appLabel,
+                    isGroup = isGroup,
+                    lastMessageText = "This message was deleted in WhatsApp",
+                    lastSenderName = resolvedTitle,
+                    lastTimestamp = deletedAt,
+                    messageCount = 0,
+                    unreadCount = 0,
+                    isPinned = false,
+                    deletedCount = 0,
+                    lastMessageType = "TEXT",
+                )
+            )
+        }
+        val rowId = insertMessage(
+            MessageEntity(
+                chatId = chatId,
+                senderName = resolvedTitle,
+                body = "This message was deleted in WhatsApp",
+                timestamp = deletedAt,
+                packageName = packageName,
+                appLabel = appLabel,
+                isGroupMessage = isGroup,
+                notificationKey = notificationKey,
+                dedupKey = "deleted_notice|$chatId|$deletedAt",
+                messageType = "TEXT",
+                mediaDuration = null,
+                isViewOnce = false,
+                deletedInWhatsApp = true,
+                deletedAtTimestamp = deletedAt,
+            )
+        )
+        if (rowId == -1L) return false
+
+        val currentChat = getChatOnce(chatId)
+        if (currentChat != null) {
+            updateChat(
+                currentChat.copy(
+                    lastMessageText = "This message was deleted in WhatsApp",
+                    lastTimestamp = maxOf(currentChat.lastTimestamp, deletedAt),
+                    messageCount = currentChat.messageCount + 1,
+                    unreadCount = currentChat.unreadCount + 1,
+                    deletedCount = countDeletedInChat(chatId),
+                )
+            )
+        }
         return true
     }
 

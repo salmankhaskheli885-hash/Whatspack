@@ -36,8 +36,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
@@ -46,6 +48,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -604,10 +607,17 @@ private fun WhatsAppChatRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
-                    if (chat.lastMessageType == MessageTypes.VOICE) {
+                    val typeIcon = when (chat.lastMessageType) {
+                        MessageTypes.VOICE -> Icons.Filled.Mic
+                        MessageTypes.IMAGE -> Icons.Filled.Image
+                        MessageTypes.VIDEO -> Icons.Filled.Videocam
+                        MessageTypes.DOCUMENT -> Icons.Filled.Description
+                        else -> null
+                    }
+                    if (typeIcon != null) {
                         Icon(
-                            imageVector = Icons.Filled.Mic,
-                            contentDescription = "Voice message",
+                            imageVector = typeIcon,
+                            contentDescription = chat.lastMessageType,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp),
                         )
