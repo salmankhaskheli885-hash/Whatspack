@@ -4,6 +4,16 @@ import com.example.data.local.ChatDao
 import com.example.data.local.ChatEntity
 import com.example.data.local.MessageEntity
 import kotlinx.coroutines.flow.Flow
+import java.io.File
+
+object MessageTypes {
+    const val TEXT = "TEXT"
+    const val VOICE = "VOICE"
+    const val IMAGE = "IMAGE"
+    const val VIDEO = "VIDEO"
+    const val DOCUMENT = "DOCUMENT"
+    const val CALL = "CALL"
+}
 
 data class ParsedWhatsAppMessage(
     val chatId: String,
@@ -16,6 +26,11 @@ data class ParsedWhatsAppMessage(
     val isGroup: Boolean,
     val notificationKey: String,
     val dedupKey: String,
+    val messageType: String = MessageTypes.TEXT,
+    val mediaDuration: String? = null,
+    val isViewOnce: Boolean = false,
+    val mediaUriString: String? = null,
+    val mediaFilePath: String? = null,
 )
 
 data class DeletedMessageSignal(
@@ -29,6 +44,8 @@ class ChatRepository(private val chatDao: ChatDao) {
     val recentMessages: Flow<List<MessageEntity>> = chatDao.observeRecentMessages()
     val totalMessageCount: Flow<Int> = chatDao.observeTotalMessageCount()
     val deletedMessageCount: Flow<Int> = chatDao.observeDeletedMessageCount()
+    val voiceMessageCount: Flow<Int> = chatDao.observeVoiceMessageCount()
+    val mediaSavedCount: Flow<Int> = chatDao.observeMediaSavedCount()
     val totalUnreadCount: Flow<Int> = chatDao.observeTotalUnreadCount()
 
     fun observeChat(chatId: String): Flow<ChatEntity?> = chatDao.observeChat(chatId)
@@ -48,6 +65,10 @@ class ChatRepository(private val chatDao: ChatDao) {
             timestamp = parsed.timestamp,
             notificationKey = parsed.notificationKey,
             dedupKey = parsed.dedupKey,
+            messageType = parsed.messageType,
+            mediaDuration = parsed.mediaDuration,
+            isViewOnce = parsed.isViewOnce,
+            mediaFilePath = parsed.mediaFilePath,
         )
     }
 
@@ -63,7 +84,15 @@ class ChatRepository(private val chatDao: ChatDao) {
 
     suspend fun setPinned(chatId: String, pinned: Boolean) = chatDao.setPinned(chatId, pinned)
 
-    suspend fun deleteChat(chatId: String) = chatDao.deleteChat(chatId)
+    suspend fun deleteChat(chatId: String) {
+        val paths = chatDao.getMediaPathsForChat(chatId)
+        chatDao.deleteChat(chatId)
+        paths.forEach { path -> runCatching { File(path).delete() } }
+    }
 
-    suspend fun clearAll() = chatDao.clearAll()
+    suspend fun clearAll() {
+        val paths = chatDao.getAllMediaPaths()
+        chatDao.clearAll()
+        paths.forEach { path -> runCatching { File(path).delete() } }
+    }
 }

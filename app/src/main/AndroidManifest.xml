@@ -2,10 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Play-compliant targeted package visibility for WhatsApp & WhatsApp Business -->
+    <!-- Microphone permission for Voice Search of saved chats and messages -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Play-compliant targeted package visibility for WhatsApp, WA Business & Speech recognition -->
     <queries>
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
     </queries>
 
     <application

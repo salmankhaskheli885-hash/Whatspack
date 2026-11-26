@@ -15,7 +15,6 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         ListenerStatusTracker.setServiceBound(true)
-        // Capture any currently active WhatsApp notifications immediately on bind
         runCatching {
             activeNotifications?.forEach { sbn ->
                 processNotification(sbn)
@@ -41,8 +40,8 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
         reason: Int,
     ) {
         super.onNotificationRemoved(sbn, rankingMap, reason)
-        // Intentionally a no-op: when WhatsApp cancels, clears, or deletes a notification,
-        // ChatReader keeps every captured message permanently preserved locally.
+        // Intentionally a no-op: when WhatsApp clears chats, deletes messages,
+        // or expires View Once notifications, ChatReader keeps all saved data permanently.
     }
 
     private fun processNotification(sbn: StatusBarNotification) {
@@ -52,9 +51,19 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
         val repository = (application as? ChatReaderApp)?.repository ?: return
         serviceScope.launch {
             result.messages.forEach { msg ->
-                val inserted = repository.saveIncomingMessage(msg)
+                val savedMediaPath = NotificationMediaSaver.captureMediaIfAvailable(
+                    context = applicationContext,
+                    sbn = sbn,
+                    parsed = msg,
+                )
+                val enriched = if (savedMediaPath != null) {
+                    msg.copy(mediaFilePath = savedMediaPath)
+                } else {
+                    msg
+                }
+                val inserted = repository.saveIncomingMessage(enriched)
                 if (inserted) {
-                    ListenerStatusTracker.markMessageCaptured(msg.timestamp)
+                    ListenerStatusTracker.markMessageCaptured(enriched.timestamp)
                 }
             }
             result.deletedSignals.forEach { signal ->

@@ -33,4 +33,8 @@ data class MessageEntity(
     val dedupKey: String,
     val deletedInWhatsApp: Boolean = false,
     val deletedAtTimestamp: Long? = null,
+    val messageType: String = "TEXT",
+    val mediaDuration: String? = null,
+    val isViewOnce: Boolean = false,
+    val mediaFilePath: String? = null,
 )

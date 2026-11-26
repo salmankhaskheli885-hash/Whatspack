@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +43,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -63,11 +65,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.local.MessageEntity
+import com.example.data.repository.MessageTypes
 import com.example.ui.ChatDetailUiState
 import com.example.ui.components.ContactAvatar
 import com.example.ui.components.DeletedPreservedBadge
+import com.example.ui.components.FullScreenMediaDialog
+import com.example.ui.components.MediaTypeBadge
 import com.example.ui.components.MessageMetadataSheet
 import com.example.ui.components.ReadOnlyBadge
+import com.example.ui.components.SavedMediaPreviewCard
+import com.example.ui.components.VoiceMessageBubbleContent
 import com.example.ui.components.WhatsAppTimeFormatter
 import com.example.ui.components.avatarColorFor
 import com.example.ui.components.copyTextToClipboard
@@ -89,6 +96,8 @@ fun ChatDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
     var inspectedMessage by remember { mutableStateOf<MessageEntity?>(null) }
+    var fullScreenMediaPath by remember { mutableStateOf<String?>(null) }
+    var showDeleteChatConfirm by remember { mutableStateOf(false) }
 
     val filteredMessages = remember(uiState.messages, searchQuery) {
         val q = searchQuery.trim()
@@ -219,8 +228,7 @@ fun ChatDetailScreen(
                                     },
                                     onClick = {
                                         menuExpanded = false
-                                        onDeleteChat()
-                                        onBack()
+                                        showDeleteChatConfirm = true
                                     },
                                 )
                             }
@@ -375,6 +383,7 @@ fun ChatDetailScreen(
                             message = message,
                             showSenderName = chat?.isGroup == true,
                             onClick = { inspectedMessage = message },
+                            onOpenFullScreenMedia = { path -> fullScreenMediaPath = path },
                         )
                     }
                 }
@@ -387,6 +396,39 @@ fun ChatDetailScreen(
             message = msg,
             chatTitle = chat?.title ?: msg.senderName,
             onDismiss = { inspectedMessage = null },
+        )
+    }
+
+    fullScreenMediaPath?.let { path ->
+        FullScreenMediaDialog(
+            filePath = path,
+            onDismiss = { fullScreenMediaPath = null },
+        )
+    }
+
+    if (showDeleteChatConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteChatConfirm = false },
+            title = { Text("Delete Saved Chat?") },
+            text = {
+                Text("This permanently deletes all saved messages and media for this chat from ChatReader. Saved records stay intact unless you confirm deletion.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteChatConfirm = false
+                        onDeleteChat()
+                        onBack()
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteChatConfirm = false }) {
+                    Text("Keep Saved")
+                }
+            },
         )
     }
 }
@@ -421,6 +463,7 @@ private fun IncomingMessageBubble(
     message: MessageEntity,
     showSenderName: Boolean,
     onClick: () -> Unit,
+    onOpenFullScreenMedia: (String) -> Unit,
 ) {
     val bubbleShape = RoundedCornerShape(
         topStart = 4.dp,
@@ -449,7 +492,7 @@ private fun IncomingMessageBubble(
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (showSenderName) {
                     Text(
@@ -468,12 +511,36 @@ private fun IncomingMessageBubble(
                     )
                 }
 
-                SelectionContainer {
-                    Text(
-                        text = message.body,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                when {
+                    message.messageType == MessageTypes.VOICE -> {
+                        VoiceMessageBubbleContent(
+                            duration = message.mediaDuration,
+                            body = message.body,
+                            modifier = Modifier.testTag("voice_message_bubble_${message.id}"),
+                        )
+                    }
+                    message.mediaFilePath != null || message.isViewOnce -> {
+                        SavedMediaPreviewCard(
+                            filePath = message.mediaFilePath,
+                            isViewOnce = message.isViewOnce,
+                            messageType = message.messageType,
+                            body = message.body,
+                            onOpenFullScreen = onOpenFullScreenMedia,
+                            modifier = Modifier.testTag("media_message_bubble_${message.id}"),
+                        )
+                    }
+                    else -> {
+                        if (message.messageType != MessageTypes.TEXT) {
+                            MediaTypeBadge(messageType = message.messageType)
+                        }
+                        SelectionContainer {
+                            Text(
+                                text = message.body,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
                 }
 
                 Row(

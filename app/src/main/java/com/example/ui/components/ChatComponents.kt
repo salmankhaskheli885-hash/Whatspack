@@ -3,16 +3,21 @@ package com.example.ui.components
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,10 +25,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LooksOne
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
@@ -33,16 +45,20 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -50,9 +66,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.R
 import com.example.data.local.MessageEntity
+import com.example.data.repository.MessageTypes
 import com.example.ui.theme.AvatarPalette
+import java.io.File
 import com.example.ui.theme.WarningAmber
 import com.example.ui.theme.WarningContainerDark
 import com.example.ui.theme.WarningContainerLight
@@ -257,6 +277,275 @@ fun DeletedPreservedBadge(
 }
 
 @Composable
+fun VoiceMessageBubbleContent(
+    duration: String?,
+    body: String,
+    modifier: Modifier = Modifier,
+) {
+    val barHeights = listOf(8, 16, 12, 22, 18, 10, 24, 15, 20, 11, 17, 9, 21, 14, 10)
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Mic,
+                        contentDescription = "Voice message",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Voice Message",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        if (!duration.isNullOrBlank()) {
+                            Text(
+                                text = duration,
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        barHeights.forEach { heightVal ->
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(heightVal.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)),
+                            )
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = "$body • Voice note detected",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+fun MediaTypeBadge(
+    messageType: String,
+    modifier: Modifier = Modifier,
+) {
+    val (icon, label) = when (messageType) {
+        MessageTypes.VOICE -> Icons.Filled.Mic to "Voice"
+        MessageTypes.IMAGE -> Icons.Filled.Image to "Photo"
+        MessageTypes.VIDEO -> Icons.Filled.Videocam to "Video"
+        MessageTypes.DOCUMENT -> Icons.Filled.Description to "Document"
+        MessageTypes.CALL -> Icons.Filled.Call to "Call"
+        else -> return
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(12.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+    }
+}
+
+@Composable
+fun ViewOnceBadge(
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.LooksOne,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.tertiary,
+                modifier = Modifier.size(13.dp),
+            )
+            Text(
+                text = "View Once • Saved Permanently",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+        }
+    }
+}
+
+@Composable
+fun SavedMediaPreviewCard(
+    filePath: String?,
+    isViewOnce: Boolean,
+    messageType: String,
+    body: String,
+    onOpenFullScreen: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bitmap = remember(filePath) {
+        if (!filePath.isNullOrBlank() && File(filePath).exists()) {
+            runCatching { BitmapFactory.decodeFile(filePath) }.getOrNull()
+        } else {
+            null
+        }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MediaTypeBadge(messageType = messageType)
+            if (isViewOnce) {
+                ViewOnceBadge()
+            }
+        }
+
+        if (bitmap != null && filePath != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Saved WhatsApp media",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 140.dp, max = 240.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onOpenFullScreen(filePath) },
+            )
+            Text(
+                text = "$body • Tap to view anytime",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = body,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = if (isViewOnce) {
+                            "View Once record saved permanently here. Note: WhatsApp hides raw View Once photo/video files from system notifications unless a preview bitmap was included."
+                        } else {
+                            "Media notification saved permanently in ChatReader."
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FullScreenMediaDialog(
+    filePath: String,
+    onDismiss: () -> Unit,
+) {
+    val bitmap = remember(filePath) {
+        runCatching { BitmapFactory.decodeFile(filePath) }.getOrNull()
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Full screen saved media",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.6f)),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Close viewer",
+                    tint = Color.White,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun PermissionBannerCard(
     onGrantClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -377,9 +666,13 @@ fun MessageMetadataSheet(
 
             MetadataRow("Conversation", chatTitle)
             MetadataRow("Sender", message.senderName)
+            MetadataRow("Message Type", message.messageType)
             MetadataRow("Source App", "${message.appLabel} (${message.packageName})")
             MetadataRow("Chat Type", if (message.isGroupMessage) "Group Chat" else "Direct Message")
             MetadataRow("Received At", WhatsAppTimeFormatter.formatFullDateTime(message.timestamp))
+            if (message.isViewOnce) {
+                MetadataRow("View Once", "Yes • Saved permanently locally")
+            }
             if (message.deletedInWhatsApp) {
                 val deletedTime = message.deletedAtTimestamp?.let {
                     " (${WhatsAppTimeFormatter.formatFullDateTime(it)})"

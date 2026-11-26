@@ -4,6 +4,7 @@ import com.example.data.local.ChatDao
 import com.example.data.local.ChatEntity
 import com.example.data.local.MessageEntity
 import com.example.data.repository.ChatRepository
+import com.example.data.repository.MessageTypes
 import com.example.service.RawNotificationPayload
 import com.example.service.WhatsAppNotificationParser
 import kotlinx.coroutines.flow.Flow
@@ -46,8 +47,33 @@ private class InMemoryChatDao : ChatDao {
     override fun observeDeletedMessageCount(): Flow<Int> =
         messagesFlow.map { list -> list.count { it.deletedInWhatsApp } }
 
+    override fun observeVoiceMessageCount(): Flow<Int> =
+        messagesFlow.map { list -> list.count { it.messageType == MessageTypes.VOICE } }
+
+    override fun observeMediaSavedCount(): Flow<Int> =
+        messagesFlow.map { list -> list.count { it.isViewOnce || it.mediaFilePath != null } }
+
     override fun observeTotalUnreadCount(): Flow<Int> =
         chatsFlow.map { list -> list.sumOf { it.unreadCount } }
+
+    override suspend fun getMediaPathsForChat(chatId: String): List<String> =
+        messagesFlow.value.filter { it.chatId == chatId }.mapNotNull { it.mediaFilePath }
+
+    override suspend fun getAllMediaPaths(): List<String> =
+        messagesFlow.value.mapNotNull { it.mediaFilePath }
+
+    override suspend fun countMatchingRecentMessages(
+        chatId: String,
+        senderName: String,
+        body: String,
+        minTimestamp: Long,
+        maxTimestamp: Long,
+    ): Int = messagesFlow.value.count {
+        it.chatId == chatId &&
+            it.senderName == senderName &&
+            it.body == body &&
+            it.timestamp in minTimestamp..maxTimestamp
+    }
 
     override suspend fun getLatestActiveMessageByKey(
         chatId: String,
@@ -139,7 +165,6 @@ class ChatRepositoryTest {
         assertTrue(repository.saveIncomingMessage(initialEvents.messages.first()))
         assertFalse(repository.saveIncomingMessage(initialEvents.messages.first()))
 
-        // Sender now deletes the message in WhatsApp ("Delete for everyone")
         val deletedEvents = WhatsAppNotificationParser.parseEvents(
             RawNotificationPayload(
                 packageName = "com.whatsapp",
@@ -167,5 +192,83 @@ class ChatRepositoryTest {
         assertEquals(1, messages.size)
         assertEquals("Kal milte hain 5 baje", messages.first().body)
         assertTrue(messages.first().deletedInWhatsApp)
+    }
+
+    @Test
+    fun `repository saves WA Business voice message and tracks voice count`() = runTest {
+        val repository = ChatRepository(InMemoryChatDao())
+        val events = WhatsAppNotificationParser.parseEvents(
+            RawNotificationPayload(
+                packageName = "com.whatsapp.w4b",
+                notificationKey = "w4b_voice",
+                postTime = 1_764_100_010_000L,
+                flags = 0,
+                title = "Client Ayesha",
+                text = "🎤 Voice message (0:19)",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        )
+
+        assertEquals(1, events.messages.size)
+        assertTrue(repository.saveIncomingMessage(events.messages.first()))
+        assertEquals(1, repository.voiceMessageCount.first())
+
+        val chat = repository.allChats.first().first()
+        assertEquals("WA Business", chat.appLabel)
+        assertEquals(MessageTypes.VOICE, chat.lastMessageType)
+    }
+
+    @Test
+    fun `repository keeps View Once media record even after WhatsApp deletion until user deletes`() = runTest {
+        val repository = ChatRepository(InMemoryChatDao())
+        val events = WhatsAppNotificationParser.parseEvents(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "once_photo_key",
+                postTime = 1_764_100_020_000L,
+                flags = 0,
+                title = "Zaid",
+                text = "📷 View once photo",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        )
+
+        assertEquals(1, events.messages.size)
+        val parsed = events.messages.first().copy(mediaFilePath = "/tmp/fake_preview.jpg")
+        assertTrue(parsed.isViewOnce)
+        assertTrue(repository.saveIncomingMessage(parsed))
+        assertEquals(1, repository.mediaSavedCount.first())
+
+        val deletedEvents = WhatsAppNotificationParser.parseEvents(
+            RawNotificationPayload(
+                packageName = "com.whatsapp",
+                notificationKey = "once_photo_key",
+                postTime = 1_764_100_025_000L,
+                flags = 0,
+                title = "Zaid",
+                text = "This message was deleted",
+                bigText = null,
+                conversationTitle = null,
+                isGroupConversation = false,
+                styleMessages = emptyList(),
+            )
+        )
+        assertTrue(repository.markDeletedInWhatsApp(deletedEvents.deletedSignals.first()))
+
+        val savedMessages = repository.observeMessagesForChat(parsed.chatId).first()
+        assertEquals(1, savedMessages.size)
+        assertTrue(savedMessages.first().isViewOnce)
+        assertTrue(savedMessages.first().deletedInWhatsApp)
+        assertEquals("/tmp/fake_preview.jpg", savedMessages.first().mediaFilePath)
+
+        repository.deleteChat(parsed.chatId)
+        assertTrue(repository.allChats.first().isEmpty())
+        assertEquals(0, repository.mediaSavedCount.first())
     }
 }

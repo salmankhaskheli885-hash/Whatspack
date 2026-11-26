@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.ChatReaderApp
 import com.example.data.local.ChatEntity
 import com.example.data.local.MessageEntity
+import com.example.data.repository.MessageTypes
 import com.example.service.ListenerStatusTracker
 import com.example.service.WhatsAppAppStatus
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +19,8 @@ import kotlinx.coroutines.launch
 
 enum class ChatFilter(val label: String) {
     ALL("All"),
+    VOICE("Voice"),
+    MEDIA("Media / Once"),
     UNREAD("Unread"),
     DELETED("Deleted Saved"),
     GROUPS("Groups"),
@@ -27,6 +30,7 @@ enum class ChatFilter(val label: String) {
 
 data class SystemPermissionState(
     val isNotificationAccessGranted: Boolean = false,
+    val isVoiceSearchPermissionGranted: Boolean = false,
     val isServiceBound: Boolean = false,
     val lastCapturedTimestamp: Long? = null,
     val whatsAppApps: List<WhatsAppAppStatus> = emptyList(),
@@ -44,6 +48,8 @@ data class ChatsUiState(
 data class DetailsUiState(
     val totalChats: Int = 0,
     val totalMessages: Int = 0,
+    val voiceMessages: Int = 0,
+    val mediaSavedMessages: Int = 0,
     val deletedPreservedMessages: Int = 0,
     val groupChats: Int = 0,
     val totalUnread: Int = 0,
@@ -66,18 +72,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val permissionGranted = MutableStateFlow(
         ListenerStatusTracker.isNotificationAccessGranted(application)
     )
+    private val voicePermissionGranted = MutableStateFlow(
+        ListenerStatusTracker.isVoiceSearchPermissionGranted(application)
+    )
     private val whatsAppApps = MutableStateFlow(
         ListenerStatusTracker.queryWhatsAppApps(application)
     )
 
     val systemState: StateFlow<SystemPermissionState> = combine(
         permissionGranted,
+        voicePermissionGranted,
         ListenerStatusTracker.isServiceBound,
         ListenerStatusTracker.lastCapturedTimestamp,
         whatsAppApps,
-    ) { granted, bound, lastTs, apps ->
+    ) { notifGranted, voiceGranted, bound, lastTs, apps ->
         SystemPermissionState(
-            isNotificationAccessGranted = granted,
+            isNotificationAccessGranted = notifGranted,
+            isVoiceSearchPermissionGranted = voiceGranted,
             isServiceBound = bound,
             lastCapturedTimestamp = lastTs,
             whatsAppApps = apps,
@@ -87,6 +98,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = SystemPermissionState(
             isNotificationAccessGranted = permissionGranted.value,
+            isVoiceSearchPermissionGranted = voicePermissionGranted.value,
             whatsAppApps = whatsAppApps.value,
         ),
     )
@@ -101,6 +113,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val filtered = allChats.filter { chat ->
             val matchesFilter = when (filter) {
                 ChatFilter.ALL -> true
+                ChatFilter.VOICE -> chat.lastMessageType == MessageTypes.VOICE
+                ChatFilter.MEDIA -> chat.lastMessageType in setOf(
+                    MessageTypes.IMAGE,
+                    MessageTypes.VIDEO,
+                    MessageTypes.DOCUMENT,
+                )
                 ChatFilter.UNREAD -> chat.unreadCount > 0
                 ChatFilter.DELETED -> chat.deletedCount > 0
                 ChatFilter.GROUPS -> chat.isGroup
@@ -131,6 +149,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val detailsUiState: StateFlow<DetailsUiState> = combine(
         repository.allChats,
         repository.totalMessageCount,
+        repository.voiceMessageCount,
+        repository.mediaSavedCount,
         repository.deletedMessageCount,
         repository.totalUnreadCount,
         repository.recentMessages,
@@ -139,15 +159,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         @Suppress("UNCHECKED_CAST")
         val allChats = values[0] as List<ChatEntity>
         val msgCount = values[1] as Int
-        val deletedCount = values[2] as Int
-        val unread = values[3] as Int
+        val voiceCount = values[2] as Int
+        val mediaCount = values[3] as Int
+        val deletedCount = values[4] as Int
+        val unread = values[5] as Int
         @Suppress("UNCHECKED_CAST")
-        val recent = values[4] as List<MessageEntity>
-        val sys = values[5] as SystemPermissionState
+        val recent = values[6] as List<MessageEntity>
+        val sys = values[7] as SystemPermissionState
 
         DetailsUiState(
             totalChats = allChats.size,
             totalMessages = msgCount,
+            voiceMessages = voiceCount,
+            mediaSavedMessages = mediaCount,
             deletedPreservedMessages = deletedCount,
             groupChats = allChats.count { it.isGroup },
             totalUnread = unread,
@@ -178,11 +202,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshSystemStatus() {
         val context = getApplication<Application>()
         permissionGranted.value = ListenerStatusTracker.isNotificationAccessGranted(context)
+        voicePermissionGranted.value = ListenerStatusTracker.isVoiceSearchPermissionGranted(context)
         whatsAppApps.value = ListenerStatusTracker.queryWhatsAppApps(context)
     }
 
     fun openNotificationSettings() {
         ListenerStatusTracker.openNotificationAccessSettings(getApplication())
+    }
+
+    fun openWhatsAppNotificationSettings(packageName: String) {
+        ListenerStatusTracker.openAppNotificationSettings(getApplication(), packageName)
+    }
+
+    fun openOwnAppDetailsSettings() {
+        ListenerStatusTracker.openOwnAppDetailsSettings(getApplication())
     }
 
     fun updateSearchQuery(query: String) {

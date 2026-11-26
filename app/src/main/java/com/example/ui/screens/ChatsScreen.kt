@@ -1,5 +1,15 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,13 +36,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MarkChatRead
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.VerifiedUser
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,9 +61,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -65,8 +82,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.R
 import com.example.data.local.ChatEntity
+import com.example.data.repository.MessageTypes
 import com.example.ui.ChatFilter
 import com.example.ui.ChatsUiState
 import com.example.ui.components.ContactAvatar
@@ -86,12 +105,91 @@ fun ChatsScreen(
     onSelectFilter: (ChatFilter) -> Unit,
     onGrantPermissionClick: () -> Unit,
     onOpenPermissionTab: () -> Unit,
+    onVoicePermissionChanged: () -> Unit,
     onTogglePin: (String, Boolean) -> Unit,
     onMarkRead: (String) -> Unit,
     onDeleteChat: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var searchExpanded by remember { mutableStateOf(false) }
+    var isListening by remember { mutableStateOf(false) }
+    var pendingDeleteChat by remember { mutableStateOf<ChatEntity?>(null) }
+
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else {
+            null
+        }
+    }
+
+    DisposableEffect(speechRecognizer) {
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { isListening = true }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { isListening = false }
+            override fun onError(error: Int) { isListening = false }
+            override fun onResults(results: Bundle?) {
+                isListening = false
+                val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (!spoken.isNullOrBlank()) {
+                    onSearchQueryChange(spoken)
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (!partial.isNullOrBlank()) {
+                    onSearchQueryChange(partial)
+                }
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        onDispose {
+            speechRecognizer?.destroy()
+        }
+    }
+
+    val startVoiceListening = {
+        if (speechRecognizer == null) {
+            Toast.makeText(context, "Voice search service is not available on this device", Toast.LENGTH_SHORT).show()
+        } else if (isListening) {
+            speechRecognizer.stopListening()
+            isListening = false
+        } else {
+            searchExpanded = true
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            }
+            speechRecognizer.startListening(intent)
+        }
+    }
+
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        onVoicePermissionChanged()
+        if (granted) {
+            startVoiceListening()
+        } else {
+            Toast.makeText(context, "Microphone permission is needed for Voice Search", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val onVoiceSearchClick = {
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            startVoiceListening()
+        } else {
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -113,9 +211,24 @@ fun ChatsScreen(
             },
             actions = {
                 IconButton(
+                    onClick = onVoiceSearchClick,
+                    modifier = Modifier.testTag("voice_search_button"),
+                ) {
+                    Icon(
+                        imageVector = if (isListening) Icons.Filled.Stop else Icons.Filled.Mic,
+                        contentDescription = "Voice search",
+                    )
+                }
+                IconButton(
                     onClick = {
                         searchExpanded = !searchExpanded
-                        if (!searchExpanded) onSearchQueryChange("")
+                        if (!searchExpanded) {
+                            if (isListening) {
+                                speechRecognizer?.stopListening()
+                                isListening = false
+                            }
+                            onSearchQueryChange("")
+                        }
                     },
                     modifier = Modifier.testTag("chats_search_toggle"),
                 ) {
@@ -146,33 +259,68 @@ fun ChatsScreen(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                OutlinedTextField(
-                    value = uiState.searchQuery,
-                    onValueChange = onSearchQueryChange,
-                    placeholder = { Text("Search contacts, groups, or messages...") },
-                    singleLine = true,
-                    leadingIcon = {
-                        Icon(imageVector = Icons.Filled.Search, contentDescription = null)
-                    },
-                    trailingIcon = {
-                        if (uiState.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { onSearchQueryChange("") }) {
-                                Icon(imageVector = Icons.Filled.Close, contentDescription = "Clear search")
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        placeholder = {
+                            Text(if (isListening) "Listening... speak now" else "Search contacts, groups, or voice...")
+                        },
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(imageVector = Icons.Filled.Search, contentDescription = null)
+                        },
+                        trailingIcon = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = onVoiceSearchClick) {
+                                    Icon(
+                                        imageVector = if (isListening) Icons.Filled.Stop else Icons.Filled.Mic,
+                                        contentDescription = "Speak to search",
+                                        tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                if (uiState.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { onSearchQueryChange("") }) {
+                                        Icon(imageVector = Icons.Filled.Close, contentDescription = "Clear search")
+                                    }
+                                }
                             }
+                        },
+                        shape = RoundedCornerShape(24.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                            focusedBorderColor = MaterialTheme.colorScheme.surface,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.surface,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .testTag("chats_search_input"),
+                    )
+                    if (isListening) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp)
+                                .padding(bottom = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.GraphicEq,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = "Voice Search active • Speak contact or message",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
                         }
-                    },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedBorderColor = MaterialTheme.colorScheme.surface,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.surface,
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                        .testTag("chats_search_input"),
-                )
+                    }
+                }
             }
         }
 
@@ -247,7 +395,7 @@ fun ChatsScreen(
                             onClick = { onOpenChat(chat.chatId) },
                             onTogglePin = { onTogglePin(chat.chatId, chat.isPinned) },
                             onMarkRead = { onMarkRead(chat.chatId) },
-                            onDelete = { onDeleteChat(chat.chatId) },
+                            onDelete = { pendingDeleteChat = chat },
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 82.dp, end = 16.dp),
@@ -257,6 +405,31 @@ fun ChatsScreen(
                 }
             }
         }
+    }
+
+    pendingDeleteChat?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteChat = null },
+            title = { Text("Delete \"${target.title}\"?") },
+            text = {
+                Text("This permanently removes all saved messages and media for this chat from ChatReader. Saved records stay safe unless you confirm deletion.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteChat(target.chatId)
+                        pendingDeleteChat = null
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteChat = null }) {
+                    Text("Keep Saved")
+                }
+            },
+        )
     }
 }
 
@@ -346,14 +519,27 @@ private fun WhatsAppChatRow(
                     chat.lastMessageText
                 }
 
-                Text(
-                    text = preview,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
                     modifier = Modifier.weight(1f),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    if (chat.lastMessageType == MessageTypes.VOICE) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = "Voice message",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    Text(
+                        text = preview,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(8.dp))
 

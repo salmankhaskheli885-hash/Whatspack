@@ -205,6 +205,7 @@ fun ChatReaderNavHost(
                             onOpenPermissionTab = {
                                 navigateToTopLevel(AppRoutes.ROUTE_PERMISSION)
                             },
+                            onVoicePermissionChanged = viewModel::refreshSystemStatus,
                             onTogglePin = viewModel::togglePin,
                             onMarkRead = viewModel::markChatAsRead,
                             onDeleteChat = viewModel::deleteChat,
@@ -217,6 +218,7 @@ fun ChatReaderNavHost(
                             onOpenChat = { chatId ->
                                 navController.navigate(AppRoutes.chatDetail(chatId))
                             },
+                            onOpenAppNotificationSettings = viewModel::openWhatsAppNotificationSettings,
                         )
                     }
 
@@ -224,6 +226,9 @@ fun ChatReaderNavHost(
                         PermissionScreen(
                             systemState = systemState,
                             onOpenNotificationSettings = viewModel::openNotificationSettings,
+                            onVoicePermissionChanged = viewModel::refreshSystemStatus,
+                            onOpenAppNotificationSettings = viewModel::openWhatsAppNotificationSettings,
+                            onOpenOwnAppDetails = viewModel::openOwnAppDetailsSettings,
                             onClearAllData = viewModel::clearAllData,
                         )
                     }

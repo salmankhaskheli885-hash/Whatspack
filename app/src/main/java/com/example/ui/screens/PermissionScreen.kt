@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,9 +22,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Lock
@@ -67,10 +72,18 @@ import com.example.ui.theme.WarningAmber
 fun PermissionScreen(
     systemState: SystemPermissionState,
     onOpenNotificationSettings: () -> Unit,
+    onVoicePermissionChanged: () -> Unit,
+    onOpenAppNotificationSettings: (String) -> Unit,
+    onOpenOwnAppDetails: () -> Unit,
     onClearAllData: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) {
+        onVoicePermissionChanged()
+    }
 
     Column(
         modifier = modifier
@@ -229,6 +242,145 @@ fun PermissionScreen(
                     }
                 }
 
+                item(key = "voice_search_permission_card") {
+                    val voiceGranted = systemState.isVoiceSearchPermissionGranted
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (voiceGranted) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = if (voiceGranted) Icons.Filled.CheckCircle else Icons.Filled.Mic,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (voiceGranted) {
+                                            "Voice Search Permission Active"
+                                        } else {
+                                            "Voice Search Permission (Microphone)"
+                                        },
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = if (voiceGranted) {
+                                            "Microphone access granted • Tap Mic in Chats to search by voice"
+                                        } else {
+                                            "Allow microphone permission to search saved WhatsApp & WA Business chats by voice."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+
+                            if (!voiceGranted) {
+                                Button(
+                                    onClick = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("grant_voice_permission_button"),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Mic,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Allow Voice Search Permission")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                item(key = "whatsapp_business_check_card") {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Business,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Text(
+                                    text = "WhatsApp & WA Business Check",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            Text(
+                                text = "If WhatsApp Business messages do not appear, confirm its notifications are enabled and allow restricted settings for ChatReader on Android 13+.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                OutlinedButton(
+                                    onClick = { onOpenAppNotificationSettings("com.whatsapp.w4b") },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text("WA Business", maxLines = 1)
+                                }
+                                OutlinedButton(
+                                    onClick = { onOpenAppNotificationSettings("com.whatsapp") },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text("WhatsApp", maxLines = 1)
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = onOpenOwnAppDetails,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Open ChatReader App Info (Restricted Settings)")
+                            }
+                        }
+                    }
+                }
+
                 item(key = "how_to_enable") {
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -287,13 +439,13 @@ fun PermissionScreen(
                             )
                             GuaranteeRow(
                                 icon = Icons.Filled.History,
-                                title = "Saved Even If Deleted in WhatsApp",
-                                description = "If a sender deletes a message for everyone or clears the notification, ChatReader keeps the original message saved here.",
+                                title = "Permanent Record Until You Delete",
+                                description = "Even if all messages or chats are deleted from original WhatsApp, every saved record, voice note log, and captured image preview stays saved here until you delete it.",
                             )
                             GuaranteeRow(
                                 icon = Icons.Outlined.Lock,
-                                title = "100% On-Device Storage",
-                                description = "Captured WhatsApp messages stay inside this phone's private Room database. Nothing is uploaded anywhere.",
+                                title = "View Once & Media Records",
+                                description = "View Once records and any image previews provided by Android notifications are saved for unlimited viewing here. Note: WhatsApp blocks third-party apps from reading encrypted View Once video files directly.",
                             )
                             GuaranteeRow(
                                 icon = Icons.Outlined.Shield,

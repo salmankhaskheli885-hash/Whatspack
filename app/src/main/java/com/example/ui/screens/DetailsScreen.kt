@@ -24,7 +24,10 @@ import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Message
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -51,11 +55,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.MessageEntity
+import com.example.data.repository.MessageTypes
 import com.example.service.WhatsAppAppStatus
 import com.example.ui.DetailsUiState
 import com.example.ui.components.DeletedPreservedBadge
+import com.example.ui.components.MediaTypeBadge
 import com.example.ui.components.MessageMetadataSheet
 import com.example.ui.components.ReadOnlyBadge
+import com.example.ui.components.ViewOnceBadge
 import com.example.ui.components.WhatsAppTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,6 +70,7 @@ import com.example.ui.components.WhatsAppTimeFormatter
 fun DetailsScreen(
     uiState: DetailsUiState,
     onOpenChat: (String) -> Unit,
+    onOpenAppNotificationSettings: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var inspectedMessage by remember { mutableStateOf<MessageEntity?>(null) }
@@ -135,10 +143,12 @@ fun DetailsScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             StatCard(
-                                label = "Group Chats",
-                                value = uiState.groupChats.toString(),
-                                icon = Icons.Filled.Groups,
-                                modifier = Modifier.weight(1f),
+                                label = "Voice Notes",
+                                value = uiState.voiceMessages.toString(),
+                                icon = Icons.Filled.Mic,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("stat_voice_messages"),
                             )
                             StatCard(
                                 label = "Deleted Saved",
@@ -147,6 +157,27 @@ fun DetailsScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("stat_deleted_saved"),
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            StatCard(
+                                label = "Media / Once",
+                                value = uiState.mediaSavedMessages.toString(),
+                                icon = Icons.Filled.PhotoLibrary,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("stat_media_saved"),
+                            )
+                            StatCard(
+                                label = "Group Chats",
+                                value = uiState.groupChats.toString(),
+                                icon = Icons.Filled.Groups,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("stat_group_chats"),
                             )
                         }
                     }
@@ -167,7 +198,10 @@ fun DetailsScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 uiState.systemState.whatsAppApps.forEachIndexed { idx, app ->
-                                    WhatsAppAppRow(app = app)
+                                    WhatsAppAppRow(
+                                        app = app,
+                                        onCheckNotifications = { onOpenAppNotificationSettings(app.packageName) },
+                                    )
                                     if (idx < uiState.systemState.whatsAppApps.lastIndex) {
                                         HorizontalDivider(
                                             modifier = Modifier.padding(vertical = 12.dp),
@@ -309,73 +343,94 @@ private fun StatCard(
 }
 
 @Composable
-private fun WhatsAppAppRow(app: WhatsAppAppStatus) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
+private fun WhatsAppAppRow(
+    app: WhatsAppAppStatus,
+    onCheckNotifications: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (app.isInstalled) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        }
-                    ),
-                contentAlignment = Alignment.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f),
             ) {
-                Icon(
-                    imageVector = if (app.isInstalled) Icons.Filled.CheckCircle else Icons.Outlined.PhoneAndroid,
-                    contentDescription = null,
-                    tint = if (app.isInstalled) {
-                        MaterialTheme.colorScheme.primary
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (app.isInstalled) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = if (app.isInstalled) Icons.Filled.CheckCircle else Icons.Outlined.PhoneAndroid,
+                        contentDescription = null,
+                        tint = if (app.isInstalled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Column {
+                    Text(
+                        text = app.displayName,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = app.packageName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = if (app.isInstalled) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+            ) {
+                Text(
+                    text = if (app.isInstalled) "v${app.versionName}" else "Not Installed",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (app.isInstalled) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            Column {
-                Text(
-                    text = app.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = app.packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                 )
             }
         }
-
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = if (app.isInstalled) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-        ) {
-            Text(
-                text = if (app.isInstalled) "v${app.versionName}" else "Not Installed",
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = if (app.isInstalled) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            )
+        if (app.isInstalled) {
+            TextButton(
+                onClick = onCheckNotifications,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Notifications,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = "  Check ${app.displayName} Notifications",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }
@@ -451,8 +506,19 @@ private fun RecentMessageDetailCard(
                 )
             }
 
-            if (message.deletedInWhatsApp) {
-                DeletedPreservedBadge(label = "Deleted in WhatsApp • Saved")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (message.messageType != MessageTypes.TEXT) {
+                    MediaTypeBadge(messageType = message.messageType)
+                }
+                if (message.isViewOnce) {
+                    ViewOnceBadge()
+                }
+                if (message.deletedInWhatsApp) {
+                    DeletedPreservedBadge(label = "Deleted in WhatsApp • Saved")
+                }
             }
 
             Text(

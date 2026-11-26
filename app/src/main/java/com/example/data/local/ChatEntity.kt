@@ -17,4 +17,5 @@ data class ChatEntity(
     val unreadCount: Int,
     val isPinned: Boolean = false,
     val deletedCount: Int = 0,
+    val lastMessageType: String = "TEXT",
 )

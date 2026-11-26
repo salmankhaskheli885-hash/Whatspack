@@ -30,8 +30,32 @@ interface ChatDao {
     @Query("SELECT COUNT(*) FROM messages WHERE deletedInWhatsApp = 1")
     fun observeDeletedMessageCount(): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM messages WHERE messageType = 'VOICE'")
+    fun observeVoiceMessageCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM messages WHERE isViewOnce = 1 OR mediaFilePath IS NOT NULL")
+    fun observeMediaSavedCount(): Flow<Int>
+
     @Query("SELECT COALESCE(SUM(unreadCount), 0) FROM chats")
     fun observeTotalUnreadCount(): Flow<Int>
+
+    @Query("SELECT mediaFilePath FROM messages WHERE chatId = :chatId AND mediaFilePath IS NOT NULL")
+    suspend fun getMediaPathsForChat(chatId: String): List<String>
+
+    @Query("SELECT mediaFilePath FROM messages WHERE mediaFilePath IS NOT NULL")
+    suspend fun getAllMediaPaths(): List<String>
+
+    @Query(
+        "SELECT COUNT(*) FROM messages WHERE chatId = :chatId AND senderName = :senderName " +
+            "AND body = :body AND timestamp >= :minTimestamp AND timestamp <= :maxTimestamp"
+    )
+    suspend fun countMatchingRecentMessages(
+        chatId: String,
+        senderName: String,
+        body: String,
+        minTimestamp: Long,
+        maxTimestamp: Long,
+    ): Int
 
     @Query(
         "SELECT * FROM messages WHERE chatId = :chatId AND notificationKey = :notificationKey " +
@@ -87,7 +111,22 @@ interface ChatDao {
         timestamp: Long,
         notificationKey: String,
         dedupKey: String,
+        messageType: String,
+        mediaDuration: String?,
+        isViewOnce: Boolean,
+        mediaFilePath: String?,
     ): Boolean {
+        val recentDupes = countMatchingRecentMessages(
+            chatId = chatId,
+            senderName = senderName,
+            body = body,
+            minTimestamp = timestamp - 5_000L,
+            maxTimestamp = timestamp + 5_000L,
+        )
+        if (recentDupes > 0) {
+            return false
+        }
+
         val existingChat = getChatOnce(chatId)
         if (existingChat == null) {
             upsertChat(
@@ -104,6 +143,7 @@ interface ChatDao {
                     unreadCount = 0,
                     isPinned = false,
                     deletedCount = 0,
+                    lastMessageType = messageType,
                 )
             )
         }
@@ -119,6 +159,10 @@ interface ChatDao {
                 isGroupMessage = isGroup,
                 notificationKey = notificationKey,
                 dedupKey = dedupKey,
+                messageType = messageType,
+                mediaDuration = mediaDuration,
+                isViewOnce = isViewOnce,
+                mediaFilePath = mediaFilePath,
             )
         )
 
@@ -135,13 +179,14 @@ interface ChatDao {
                 packageName = packageName,
                 appLabel = appLabel,
                 isGroup = isGroup || (currentChat?.isGroup == true),
-                lastMessageText = if (shouldUpdatePreview) body else currentChat!!.lastMessageText,
-                lastSenderName = if (shouldUpdatePreview) senderName else currentChat!!.lastSenderName,
-                lastTimestamp = if (shouldUpdatePreview) timestamp else currentChat!!.lastTimestamp,
+                lastMessageText = if (shouldUpdatePreview) body else currentChat.lastMessageText,
+                lastSenderName = if (shouldUpdatePreview) senderName else currentChat.lastSenderName,
+                lastTimestamp = if (shouldUpdatePreview) timestamp else currentChat.lastTimestamp,
                 messageCount = (currentChat?.messageCount ?: 0) + 1,
                 unreadCount = (currentChat?.unreadCount ?: 0) + 1,
                 isPinned = currentChat?.isPinned ?: false,
                 deletedCount = currentChat?.deletedCount ?: 0,
+                lastMessageType = if (shouldUpdatePreview) messageType else currentChat.lastMessageType,
             )
         )
         return true
