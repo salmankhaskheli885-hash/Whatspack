@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <files-path name="captured_media" path="captured_media/" />
+    <files-path name="admin_promo" path="admin_promo/" />
+    <cache-path name="shared_apk" path="shared_apk/" />
 </paths>

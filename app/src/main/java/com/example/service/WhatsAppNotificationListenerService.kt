@@ -55,8 +55,11 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
         val result = WhatsAppNotificationParser.parseEventsFromStatusBarNotification(sbn)
         if (result.messages.isEmpty() && result.deletedSignals.isEmpty()) return
 
-        val repository = (application as? ChatReaderApp)?.repository ?: return
+        val app = application as? ChatReaderApp ?: return
+        val repository = app.repository
+        val cloudSync = app.cloudSyncRepository
         serviceScope.launch {
+            val touchedChatIds = linkedSetOf<String>()
             result.messages.forEach { msg ->
                 val savedMediaPath = NotificationMediaSaver.captureMediaIfAvailable(
                     context = applicationContext,
@@ -71,6 +74,7 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
                 val inserted = repository.saveIncomingMessage(enriched)
                 if (inserted) {
                     ListenerStatusTracker.markMessageCaptured(enriched.timestamp)
+                    touchedChatIds.add(enriched.chatId)
                 }
 
                 val needsSafMedia = enriched.mediaFilePath == null &&
@@ -106,7 +110,12 @@ class WhatsAppNotificationListenerService : NotificationListenerService() {
                 }
             }
             result.deletedSignals.forEach { signal ->
-                repository.markDeletedInWhatsApp(signal)
+                if (repository.markDeletedInWhatsApp(signal)) {
+                    touchedChatIds.add(signal.chatId)
+                }
+            }
+            touchedChatIds.forEach { chatId ->
+                cloudSync.syncLatestChatAndMessageToCloud(chatId)
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -21,18 +23,27 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Visibility
@@ -46,6 +57,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,22 +67,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.data.local.AdminPromoManager
 import com.example.ui.SystemPermissionState
 import com.example.ui.components.ReadOnlyBadge
 import com.example.ui.components.WhatsAppTimeFormatter
 import com.example.ui.theme.WarningAmber
+import com.example.util.AppShareHelper
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,9 +105,22 @@ fun PermissionScreen(
     onImportChatOrMediaFiles: () -> Unit,
     onSaveBackupToStorage: () -> Unit,
     onClearAllData: () -> Unit,
+    onOpenAdminPanel: () -> Unit,
+    userDisplayName: String?,
+    userEmail: String?,
+    onSyncToCloud: () -> Unit,
+    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val promoConfig = AdminPromoManager.loadConfig(context)
     var showClearDialog by remember { mutableStateOf(false) }
+    var showOwnerDialog by remember { mutableStateOf(false) }
+    var showAdminPinDialog by remember { mutableStateOf(false) }
+    var adminPinInput by remember { mutableStateOf("") }
+    var adminPinError by remember { mutableStateOf<String?>(null) }
+    var isPreparingApkShare by remember { mutableStateOf(false) }
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) {
@@ -140,6 +172,105 @@ fun PermissionScreen(
                             .height(170.dp)
                             .clip(RoundedCornerShape(20.dp)),
                     )
+                }
+
+                item(key = "cloud_sync_account_card") {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.CloudDone,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = userDisplayName?.takeIf { it.isNotBlank() } ?: "Google Account Connected",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = userEmail ?: systemState.cloudSyncStatus,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = systemState.cloudSyncStatus,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+
+                            if (systemState.isCloudSyncing) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+
+                            systemState.cloudSyncError?.let { err ->
+                                Text(
+                                    text = err,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Button(
+                                    onClick = onSyncToCloud,
+                                    enabled = !systemState.isCloudSyncing,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("sync_cloud_button"),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Sync,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Sync Online")
+                                }
+
+                                OutlinedButton(
+                                    onClick = onSignOut,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.testTag("sign_out_button"),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Sign Out")
+                                }
+                            }
+                        }
+                    }
                 }
 
                 item(key = "permission_status_card") {
@@ -668,6 +799,260 @@ fun PermissionScreen(
                         Text("Clear All Saved WhatsApp Data")
                     }
                 }
+
+                item(key = "share_app_card") {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Share,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.share_app_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.share_app_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+
+                            if (promoConfig.hasAnyPromo) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                ) {
+                                    val promoParts = buildList {
+                                        if (promoConfig.hasPromoText) add("Promotional Text")
+                                        if (promoConfig.hasPromoFile) add(promoConfig.promoFileName ?: "Promo File")
+                                    }.joinToString(" + ")
+                                    Text(
+                                        text = "Admin Forward Active: $promoParts",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (!isPreparingApkShare) {
+                                        isPreparingApkShare = true
+                                        coroutineScope.launch {
+                                            try {
+                                                AppShareHelper.shareApkFile(context)
+                                            } finally {
+                                                isPreparingApkShare = false
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isPreparingApkShare,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("share_apk_file_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Share,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    if (isPreparingApkShare) {
+                                        "Preparing ChatReader.apk..."
+                                    } else {
+                                        stringResource(R.string.share_apk_file_button)
+                                    },
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = { AppShareHelper.shareDirectDownloadLink(context) },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("share_direct_link_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Link,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.share_direct_link_button))
+                            }
+                        }
+                    }
+                }
+
+                item(key = "contact_with_owner") {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Person,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.owner_dev_name),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.owner_phone_number),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = stringResource(R.string.owner_promo_headline),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+
+                            Text(
+                                text = stringResource(R.string.owner_services_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            Button(
+                                onClick = { showOwnerDialog = true },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("contact_with_owner_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Call,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.contact_with_owner))
+                            }
+                        }
+                    }
+                }
+
+                item(key = "admin_panel_card") {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.AdminPanelSettings,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.admin_panel_title),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.admin_panel_subtitle),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    adminPinInput = ""
+                                    adminPinError = null
+                                    showAdminPinDialog = true
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("open_admin_panel_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.open_admin_panel_button))
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -691,6 +1076,137 @@ fun PermissionScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    if (showOwnerDialog) {
+        AlertDialog(
+            onDismissRequest = { showOwnerDialog = false },
+            title = { Text(stringResource(R.string.contact_with_owner)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "${stringResource(R.string.owner_dev_name)} • ${stringResource(R.string.owner_phone_number)}",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = stringResource(R.string.owner_promo_headline),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    )
+                    Text(
+                        text = stringResource(R.string.owner_services_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showOwnerDialog = false
+                        runCatching {
+                            val waIntent = Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://wa.me/923112765988?text=Assalam-o-Alaikum%20Dev%20Salman%20Khan%2C%20mujhe%20app%20ya%20website%20banwana%20hai."),
+                            )
+                            context.startActivity(waIntent)
+                        }
+                    },
+                    modifier = Modifier.testTag("owner_whatsapp_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Chat,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("WhatsApp")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showOwnerDialog = false
+                        runCatching {
+                            val dialIntent = Intent(
+                                Intent.ACTION_DIAL,
+                                Uri.parse("tel:03112765988"),
+                            )
+                            context.startActivity(dialIntent)
+                        }
+                    },
+                    modifier = Modifier.testTag("owner_call_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Call,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Call 03112765988")
+                }
+            },
+        )
+    }
+
+    if (showAdminPinDialog) {
+        AlertDialog(
+            onDismissRequest = { showAdminPinDialog = false },
+            title = { Text("Enter Admin PIN") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Admin Panel kholne ke liye apna 4-digit Admin PIN enter karein.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = adminPinInput,
+                        onValueChange = { value ->
+                            adminPinInput = value.filter { it.isDigit() }.take(6)
+                            adminPinError = null
+                        },
+                        label = { Text("Admin PIN") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        isError = adminPinError != null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_pin_input"),
+                    )
+                    adminPinError?.let { err ->
+                        Text(
+                            text = err,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (AdminPromoManager.verifyPin(adminPinInput)) {
+                            showAdminPinDialog = false
+                            adminPinInput = ""
+                            adminPinError = null
+                            onOpenAdminPanel()
+                        } else {
+                            adminPinError = "Galat PIN! Sahi Admin PIN enter karein."
+                        }
+                    },
+                    modifier = Modifier.testTag("admin_pin_unlock_button"),
+                ) {
+                    Text("Unlock")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAdminPinDialog = false }) {
                     Text("Cancel")
                 }
             },

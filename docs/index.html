@@ -289,6 +289,97 @@
       color: var(--muted);
     }
 
+    .owner-card {
+      background: linear-gradient(150deg, #0b3b32 0%, #005c4b 55%, #008069 100%);
+      color: #ffffff;
+      border-radius: 22px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .owner-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .owner-badge {
+      display: inline-block;
+      background: rgba(37, 211, 102, 0.2);
+      border: 1px solid rgba(37, 211, 102, 0.5);
+      color: #d9fdd3;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 700;
+    }
+
+    .owner-card h2 {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .owner-lead {
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.94);
+      margin-bottom: 14px;
+    }
+
+    .service-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .service-tag {
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      color: #ffffff;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .owner-actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+    }
+
+    .btn-whatsapp {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 16px;
+      border-radius: 12px;
+      background: #25d366;
+      color: #0b2919;
+      font-weight: 800;
+      font-size: 15px;
+      text-decoration: none;
+    }
+
+    .btn-call {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 16px;
+      border-radius: 12px;
+      background: #ffffff;
+      color: var(--primary-dark);
+      font-weight: 800;
+      font-size: 15px;
+      text-decoration: none;
+    }
+
     .footer {
       text-align: center;
       padding: 24px 16px 40px;
@@ -337,9 +428,17 @@
         Download ChatReader APK
       </a>
 
+      <button id="shareAppBtn" type="button" class="btn-secondary">
+        Share App (Direct APK Link)
+      </button>
+
       <button id="copyLinkBtn" type="button" class="btn-secondary">
         Copy Direct APK Download Link
       </button>
+
+      <a href="#owner-contact" class="btn-secondary">
+        Contact With Owner (Dev Salman Khan)
+      </a>
 
       <div id="statusToast" class="status-toast" aria-live="polite"></div>
 
@@ -406,15 +505,49 @@
         </div>
       </div>
     </section>
+
+    <section id="owner-contact" class="section" aria-label="Contact With Owner">
+      <div class="owner-card">
+        <div class="owner-header">
+          <span class="owner-badge">Contact With Owner</span>
+          <span class="owner-badge">Dev Salman Khan • 03112765988</span>
+        </div>
+        <h2>Dev Salman Khan</h2>
+        <p class="owner-lead">
+          Aap bhi kisi kism ka app banwa sakte ho — Contact Us Now!
+        </p>
+        <div class="service-tags">
+          <span class="service-tag">Any App</span>
+          <span class="service-tag">Gaming &amp; Gambling App</span>
+          <span class="service-tag">Any Software &amp; Any Website</span>
+          <span class="service-tag">Full Stack Development</span>
+          <span class="service-tag">Affordable / Low Budget</span>
+        </div>
+        <div class="owner-actions">
+          <a
+            class="btn-whatsapp"
+            href="https://wa.me/923112765988?text=Assalam-o-Alaikum%20Dev%20Salman%20Khan%2C%20mujhe%20app%20ya%20website%20banwana%20hai."
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            WhatsApp: 03112765988
+          </a>
+          <a class="btn-call" href="tel:03112765988">
+            Call Now: 03112765988
+          </a>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">
-    ChatReader • Offline Read-Only WhatsApp &amp; WA Business Viewer
+    ChatReader • Offline Read-Only WhatsApp &amp; WA Business Viewer • Dev Salman Khan (03112765988)
   </footer>
 
   <script>
     (function () {
       const downloadBtn = document.getElementById("downloadBtn");
+      const shareAppBtn = document.getElementById("shareAppBtn");
       const copyLinkBtn = document.getElementById("copyLinkBtn");
       const directLinkText = document.getElementById("directLinkText");
       const statusToast = document.getElementById("statusToast");
@@ -422,16 +555,19 @@
       const githubUserInput = document.getElementById("githubUserInput");
       const applyRepoBtn = document.getElementById("applyRepoBtn");
 
+      const DEFAULT_OWNER = "salmankhaskheli885-hash";
+      const DEFAULT_REPO = "Whatspack";
+
       const host = window.location.hostname || "";
       const pathParts = (window.location.pathname || "/").split("/").filter(Boolean);
 
       function inferGitHubRepo() {
         if (host.endsWith(".github.io")) {
           const owner = host.replace(".github.io", "");
-          const repo = pathParts.length > 0 ? pathParts[0] : "Whatspack";
+          const repo = pathParts.length > 0 ? pathParts[0] : DEFAULT_REPO;
           return { owner, repo };
         }
-        return null;
+        return { owner: DEFAULT_OWNER, repo: DEFAULT_REPO };
       }
 
       function setLinks(url, isLocalApk) {
@@ -445,9 +581,10 @@
       }
 
       const detected = inferGitHubRepo();
-      const releaseFallback = detected
-        ? `https://github.com/${detected.owner}/${detected.repo}/releases/latest/download/ChatReader.apk`
-        : null;
+      const releaseFallback =
+        `https://github.com/${detected.owner}/${detected.repo}/releases/latest/download/ChatReader.apk`;
+
+      setLinks(releaseFallback, false);
 
       if (window.location.protocol === "http:" || window.location.protocol === "https:") {
         fetch("./ChatReader.apk", { method: "HEAD" })
@@ -455,32 +592,48 @@
             if (res.ok) {
               const absoluteUrl = new URL("./ChatReader.apk", window.location.href).href;
               setLinks(absoluteUrl, true);
-            } else if (releaseFallback) {
-              setLinks(releaseFallback, false);
             } else {
-              setLinks(new URL("./ChatReader.apk", window.location.href).href, true);
-              repoConfigBox.style.display = "flex";
+              setLinks(releaseFallback, false);
             }
           })
           .catch(() => {
-            if (releaseFallback) {
-              setLinks(releaseFallback, false);
-            } else {
-              repoConfigBox.style.display = "flex";
-              directLinkText.textContent = "Push to GitHub (Whatspack) or enter your GitHub username below to generate the release link.";
-            }
+            setLinks(releaseFallback, false);
           });
       } else {
         repoConfigBox.style.display = "flex";
-        directLinkText.textContent = "Enter your GitHub username below or deploy this site to GitHub Pages.";
       }
 
       applyRepoBtn.addEventListener("click", () => {
         const user = (githubUserInput.value || "").trim();
         if (!user) return;
-        const releaseUrl = `https://github.com/${encodeURIComponent(user)}/Whatspack/releases/latest/download/ChatReader.apk`;
+        const releaseUrl = `https://github.com/${encodeURIComponent(user)}/${DEFAULT_REPO}/releases/latest/download/ChatReader.apk`;
         setLinks(releaseUrl, false);
         statusToast.textContent = "Direct GitHub Release APK link updated.";
+      });
+
+      shareAppBtn.addEventListener("click", async () => {
+        const apkUrl = downloadBtn.href || releaseFallback;
+        const shareMessage = `ChatReader APK direct download (click karte hi APK download hogi):\n${apkUrl}`;
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: "ChatReader Android APK",
+              text: "ChatReader APK download karein (WhatsApp & WA Business Saver):",
+              url: apkUrl,
+            });
+            statusToast.textContent = "App download link shared!";
+            return;
+          } catch (e) {
+            if (e && e.name === "AbortError") return;
+          }
+        }
+        try {
+          await navigator.clipboard.writeText(apkUrl);
+          statusToast.textContent = "Direct APK link copied! Opening WhatsApp share...";
+        } catch (e) {
+          statusToast.textContent = apkUrl;
+        }
+        window.open(`https://wa.me/?text=${encodeURIComponent(shareMessage)}`, "_blank", "noopener,noreferrer");
       });
 
       copyLinkBtn.addEventListener("click", async () => {

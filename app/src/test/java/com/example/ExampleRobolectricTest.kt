@@ -1,5 +1,7 @@
 package com.example
 
+import com.example.data.local.AdminPromoConfig
+import com.example.data.local.AdminPromoManager
 import com.example.data.local.ChatDao
 import com.example.data.local.ChatEntity
 import com.example.data.local.MessageEntity
@@ -7,6 +9,7 @@ import com.example.data.repository.ChatRepository
 import com.example.data.repository.MessageTypes
 import com.example.service.RawNotificationPayload
 import com.example.service.WhatsAppNotificationParser
+import com.example.util.AppShareHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -433,5 +436,19 @@ class ChatRepositoryTest {
         val msgs = repository.observeMessagesForChat(chat.chatId).first()
         assertEquals(1, msgs.size)
         assertTrue(msgs.first().deletedInWhatsApp)
+    }
+
+    @Test
+    fun `admin panel verifies pin 2124 and embeds promo text in share message`() {
+        assertTrue(AdminPromoManager.verifyPin("2124"))
+        assertTrue(AdminPromoManager.verifyPin(" 2124 "))
+        assertFalse(AdminPromoManager.verifyPin("0000"))
+        assertFalse(AdminPromoManager.verifyPin("2125"))
+
+        val withPromo = AppShareHelper.buildShareMessage(
+            AdminPromoConfig(promoText = "Special Offer: Contact 03112765988"),
+        )
+        assertTrue(withPromo.contains("Special Offer: Contact 03112765988"))
+        assertTrue(withPromo.contains(AppShareHelper.DIRECT_APK_DOWNLOAD_URL))
     }
 }

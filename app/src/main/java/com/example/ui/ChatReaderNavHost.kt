@@ -53,6 +53,7 @@ import androidx.navigation.navArgument
 import com.example.R
 import com.example.ui.components.FolderAccessGuideSheet
 import com.example.ui.components.NotificationAccessGuideSheet
+import com.example.ui.screens.AdminPanelScreen
 import com.example.ui.screens.ChatDetailScreen
 import com.example.ui.screens.ChatsScreen
 import com.example.ui.screens.DetailsScreen
@@ -64,6 +65,7 @@ object AppRoutes {
     const val ROUTE_MEDIA = "media"
     const val ROUTE_DETAILS = "details"
     const val ROUTE_PERMISSION = "permission"
+    const val ROUTE_ADMIN_PANEL = "admin_panel"
     const val ROUTE_CHAT_DETAIL = "chat_detail/{chatId}"
 
     fun chatDetail(chatId: String): String = "chat_detail/${Uri.encode(chatId)}"
@@ -110,7 +112,10 @@ private val TOP_DESTINATIONS = listOf(
 
 @Composable
 fun ChatReaderNavHost(
-    viewModel: MainViewModel = viewModel(),
+    viewModel: MainViewModel,
+    userDisplayName: String?,
+    userEmail: String?,
+    onSignOut: () -> Unit,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -340,6 +345,22 @@ fun ChatReaderNavHost(
                             onImportChatOrMediaFiles = launchFilePicker,
                             onSaveBackupToStorage = { backupCreateLauncher.launch("ChatReader_Backup.json") },
                             onClearAllData = viewModel::clearAllData,
+                            onOpenAdminPanel = {
+                                navController.navigate(AppRoutes.ROUTE_ADMIN_PANEL) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            userDisplayName = userDisplayName,
+                            userEmail = userEmail,
+                            onSyncToCloud = viewModel::syncToCloudNow,
+                            onSignOut = onSignOut,
+                        )
+                    }
+
+                    composable(AppRoutes.ROUTE_ADMIN_PANEL) {
+                        AdminPanelScreen(
+                            onBack = { navController.popBackStack() },
+                            onPublishOnlinePromo = viewModel::publishAdminPromo,
                         )
                     }
 

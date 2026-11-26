@@ -1,0 +1,265 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile and cloud backup metadata.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID matching the document ID."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name from Google Sign-In."
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address from Google Sign-In."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last profile update (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "CloudChat": {
+      "title": "CloudChat",
+      "description": "Online synced WhatsApp or WhatsApp Business chat thread summary.",
+      "type": "object",
+      "properties": {
+        "chatKey": {
+          "type": "string",
+          "description": "Sanitized deterministic key matching the Firestore document ID."
+        },
+        "rawChatId": {
+          "type": "string",
+          "description": "Original local chat identifier (packageName::title)."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Contact or group title."
+        },
+        "packageName": {
+          "type": "string",
+          "description": "Source package (com.whatsapp or com.whatsapp.w4b)."
+        },
+        "appLabel": {
+          "type": "string",
+          "description": "Human-readable app label."
+        },
+        "groupChat": {
+          "type": "boolean",
+          "description": "Whether this chat is a group conversation."
+        },
+        "pinned": {
+          "type": "boolean",
+          "description": "Whether the user pinned this chat."
+        },
+        "lastMessageText": {
+          "type": "string",
+          "description": "Latest message preview text."
+        },
+        "lastSenderName": {
+          "type": "string",
+          "description": "Latest sender display name."
+        },
+        "lastMessageType": {
+          "type": "string",
+          "description": "Latest message type (TEXT, VOICE, IMAGE, VIDEO, DOCUMENT, CALL)."
+        },
+        "lastTimestamp": {
+          "type": "integer",
+          "description": "Epoch milliseconds of latest message."
+        },
+        "unreadCount": {
+          "type": "integer",
+          "description": "Unread message count."
+        },
+        "deletedCount": {
+          "type": "integer",
+          "description": "Count of preserved messages deleted in WhatsApp."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "chatKey",
+        "rawChatId",
+        "userId",
+        "title",
+        "packageName",
+        "appLabel",
+        "groupChat",
+        "pinned",
+        "lastMessageText",
+        "lastSenderName",
+        "lastMessageType",
+        "lastTimestamp",
+        "unreadCount",
+        "deletedCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CloudMessage": {
+      "title": "CloudMessage",
+      "description": "Online synced WhatsApp or WhatsApp Business message record.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "chatKey": {
+          "type": "string",
+          "description": "Sanitized parent chat key."
+        },
+        "rawChatId": {
+          "type": "string",
+          "description": "Original local chat identifier."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Sender name."
+        },
+        "body": {
+          "type": "string",
+          "description": "Message text or media summary."
+        },
+        "timestamp": {
+          "type": "integer",
+          "description": "Message timestamp in epoch milliseconds."
+        },
+        "packageName": {
+          "type": "string",
+          "description": "Source package name."
+        },
+        "messageType": {
+          "type": "string",
+          "description": "Message category (TEXT, VOICE, IMAGE, VIDEO, DOCUMENT, CALL)."
+        },
+        "deletedInWhatsApp": {
+          "type": "boolean",
+          "description": "Whether original message was deleted in WhatsApp."
+        },
+        "viewOnce": {
+          "type": "boolean",
+          "description": "Whether message was marked View Once."
+        },
+        "mediaDuration": {
+          "type": "string",
+          "description": "Optional voice or video duration label."
+        },
+        "dedupKey": {
+          "type": "string",
+          "description": "Deterministic deduplication key."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "chatKey",
+        "rawChatId",
+        "senderName",
+        "body",
+        "timestamp",
+        "packageName",
+        "messageType",
+        "deletedInWhatsApp",
+        "viewOnce",
+        "dedupKey",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AppPromoConfig": {
+      "title": "AppPromoConfig",
+      "description": "Global promotional text and optional attached file published by admin for app forwarding.",
+      "type": "object",
+      "properties": {
+        "promoText": {
+          "type": "string",
+          "description": "Promotional message forwarded with app share."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "Admin UID who last updated promo configuration."
+        },
+        "promoFileName": {
+          "type": "string",
+          "description": "Optional uploaded promo file display name."
+        },
+        "promoFileMimeType": {
+          "type": "string",
+          "description": "Optional uploaded promo file MIME type."
+        },
+        "promoFileSizeBytes": {
+          "type": "integer",
+          "description": "Optional uploaded promo file size in bytes."
+        },
+        "promoFileBase64": {
+          "type": "string",
+          "description": "Optional Base64 payload of small promo file synced online."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["promoText", "updatedBy", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private profile document scoped to the authenticated user."
+    },
+    "/users/{userId}/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/CloudChat" },
+      "description": "Cloud-synced WhatsApp and WA Business chat summaries owned by the user."
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/CloudMessage" },
+      "description": "Cloud-synced WhatsApp and WA Business message records owned by the user."
+    },
+    "/app_config/{configId}": {
+      "schema": { "$ref": "#/entities/AppPromoConfig" },
+      "description": "Admin-managed promotional text and attachment config readable by signed-in users."
+    }
+  }
+}

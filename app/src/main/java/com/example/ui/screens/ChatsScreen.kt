@@ -45,10 +45,12 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.VerifiedUser
@@ -79,6 +81,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +97,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.R
+import com.example.data.local.AdminPromoManager
 import com.example.data.local.ChatEntity
 import com.example.data.repository.MessageTypes
 import com.example.ui.ChatFilter
@@ -106,6 +110,8 @@ import com.example.ui.components.ReadOnlyBadge
 import com.example.ui.components.WhatsAppTimeFormatter
 import com.example.ui.theme.UnreadBadgeGreen
 import com.example.ui.theme.UnreadBadgeText
+import com.example.util.AppShareHelper
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -127,9 +133,12 @@ fun ChatsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var searchExpanded by remember { mutableStateOf(false) }
     var isListening by remember { mutableStateOf(false) }
     var pendingDeleteChat by remember { mutableStateOf<ChatEntity?>(null) }
+    var showShareDialog by remember { mutableStateOf(false) }
+    var isPreparingApkShare by remember { mutableStateOf(false) }
 
     val speechRecognizer = remember {
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
@@ -251,6 +260,15 @@ fun ChatsScreen(
                     Icon(
                         imageVector = if (isListening) Icons.Filled.Stop else Icons.Filled.Mic,
                         contentDescription = "Voice search",
+                    )
+                }
+                IconButton(
+                    onClick = { showShareDialog = true },
+                    modifier = Modifier.testTag("chats_share_app_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = "Share ChatReader APK",
                     )
                 }
                 IconButton(
@@ -510,6 +528,76 @@ fun ChatsScreen(
             dismissButton = {
                 TextButton(onClick = { pendingDeleteChat = null }) {
                     Text("Keep Saved")
+                }
+            },
+        )
+    }
+
+    if (showShareDialog) {
+        val promoConfig = AdminPromoManager.loadConfig(context)
+        AlertDialog(
+            onDismissRequest = { if (!isPreparingApkShare) showShareDialog = false },
+            title = { Text(stringResource(R.string.share_app_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.share_app_desc))
+                    if (promoConfig.hasAnyPromo) {
+                        val promoParts = buildList {
+                            if (promoConfig.hasPromoText) add("Promotional Text")
+                            if (promoConfig.hasPromoFile) add(promoConfig.promoFileName ?: "Promo File")
+                        }.joinToString(" + ")
+                        Text(
+                            text = "Includes: $promoParts",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (!isPreparingApkShare) {
+                            isPreparingApkShare = true
+                            coroutineScope.launch {
+                                try {
+                                    AppShareHelper.shareApkFile(context)
+                                } finally {
+                                    isPreparingApkShare = false
+                                    showShareDialog = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isPreparingApkShare,
+                    modifier = Modifier.testTag("dialog_share_apk_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        if (isPreparingApkShare) "Preparing APK..." else stringResource(R.string.share_apk_file_button),
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showShareDialog = false
+                        AppShareHelper.shareDirectDownloadLink(context)
+                    },
+                    modifier = Modifier.testTag("dialog_share_link_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Link,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Share Direct Link")
                 }
             },
         )

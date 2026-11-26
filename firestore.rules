@@ -1,0 +1,260 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'salmankhaskheli885@gmail.com' &&
+         request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 120 &&
+             data.email is string &&
+             data.email.size() >= 3 &&
+             data.email.size() <= 200 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidCloudChat(data, userId, chatId) {
+      return data.chatKey is string &&
+             data.chatKey == chatId &&
+             data.rawChatId is string &&
+             data.rawChatId.size() >= 1 &&
+             data.rawChatId.size() <= 256 &&
+             data.userId is string &&
+             data.userId == userId &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 160 &&
+             data.packageName is string &&
+             data.packageName.size() >= 1 &&
+             data.packageName.size() <= 80 &&
+             data.appLabel is string &&
+             data.appLabel.size() >= 1 &&
+             data.appLabel.size() <= 60 &&
+             data.groupChat is bool &&
+             data.pinned is bool &&
+             data.lastMessageText is string &&
+             data.lastMessageText.size() <= 2000 &&
+             data.lastSenderName is string &&
+             data.lastSenderName.size() <= 120 &&
+             data.lastMessageType is string &&
+             data.lastMessageType.size() >= 1 &&
+             data.lastMessageType.size() <= 32 &&
+             data.lastTimestamp is int &&
+             data.lastTimestamp >= 0 &&
+             data.unreadCount is int &&
+             data.unreadCount >= 0 &&
+             data.deletedCount is int &&
+             data.deletedCount >= 0 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidCloudMessage(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.chatKey is string &&
+             isValidId(data.chatKey) &&
+             data.rawChatId is string &&
+             data.rawChatId.size() >= 1 &&
+             data.rawChatId.size() <= 256 &&
+             data.senderName is string &&
+             data.senderName.size() >= 1 &&
+             data.senderName.size() <= 120 &&
+             data.body is string &&
+             data.body.size() >= 1 &&
+             data.body.size() <= 4000 &&
+             data.timestamp is int &&
+             data.timestamp >= 0 &&
+             data.packageName is string &&
+             data.packageName.size() >= 1 &&
+             data.packageName.size() <= 80 &&
+             data.messageType is string &&
+             data.messageType.size() >= 1 &&
+             data.messageType.size() <= 32 &&
+             data.deletedInWhatsApp is bool &&
+             data.viewOnce is bool &&
+             data.dedupKey is string &&
+             data.dedupKey.size() >= 1 &&
+             data.dedupKey.size() <= 300 &&
+             (!('mediaDuration' in data) || (data.mediaDuration is string && data.mediaDuration.size() <= 32)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidAppPromoConfig(data) {
+      return data.promoText is string &&
+             data.promoText.size() <= 2000 &&
+             data.updatedBy is string &&
+             data.updatedBy == request.auth.uid &&
+             (!('promoFileName' in data) || (data.promoFileName is string && data.promoFileName.size() >= 1 && data.promoFileName.size() <= 160)) &&
+             (!('promoFileMimeType' in data) || (data.promoFileMimeType is string && data.promoFileMimeType.size() >= 1 && data.promoFileMimeType.size() <= 120)) &&
+             (!('promoFileSizeBytes' in data) || (data.promoFileSizeBytes is int && data.promoFileSizeBytes >= 0 && data.promoFileSizeBytes <= 524288)) &&
+             (!('promoFileBase64' in data) || (data.promoFileBase64 is string && data.promoFileBase64.size() <= 720000)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && request.auth.uid == adminUid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /app_config/{configId} {
+      allow get: if isSignedIn() && configId == 'promo';
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+                       configId == 'promo' &&
+                       incoming().keys().hasAll(['promoText', 'updatedBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly([
+                         'promoText', 'updatedBy', 'promoFileName', 'promoFileMimeType',
+                         'promoFileSizeBytes', 'promoFileBase64', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidAppPromoConfig(incoming());
+
+      allow update: if isAdmin() &&
+                       configId == 'promo' &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().keys().hasAll(['promoText', 'updatedBy', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly([
+                         'promoText', 'updatedBy', 'promoFileName', 'promoFileMimeType',
+                         'promoFileSizeBytes', 'promoFileBase64', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'promoText', 'updatedBy', 'promoFileName', 'promoFileMimeType',
+                         'promoFileSizeBytes', 'promoFileBase64', 'updatedAt'
+                       ]) &&
+                       isValidAppPromoConfig(incoming());
+
+      allow delete: if isAdmin() && configId == 'promo';
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow update: if isOwner(userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt']) &&
+                       isValidUserProfile(incoming(), userId);
+
+      allow delete: if isOwner(userId);
+
+      match /chats/{chatId} {
+        allow get: if isOwner(userId) && isValidId(chatId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(chatId) &&
+                         incoming().keys().hasAll([
+                           'chatKey', 'rawChatId', 'userId', 'title', 'packageName', 'appLabel',
+                           'groupChat', 'pinned', 'lastMessageText', 'lastSenderName',
+                           'lastMessageType', 'lastTimestamp', 'unreadCount', 'deletedCount',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'chatKey', 'rawChatId', 'userId', 'title', 'packageName', 'appLabel',
+                           'groupChat', 'pinned', 'lastMessageText', 'lastSenderName',
+                           'lastMessageType', 'lastTimestamp', 'unreadCount', 'deletedCount',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidCloudChat(incoming(), userId, chatId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(chatId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().chatKey == existing().chatKey &&
+                         incoming().rawChatId == existing().rawChatId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'packageName', 'appLabel', 'groupChat', 'pinned',
+                           'lastMessageText', 'lastSenderName', 'lastMessageType',
+                           'lastTimestamp', 'unreadCount', 'deletedCount', 'updatedAt'
+                         ]) &&
+                         isValidCloudChat(incoming(), userId, chatId);
+
+        allow delete: if isOwner(userId) && isValidId(chatId);
+      }
+
+      match /messages/{messageId} {
+        allow get: if isOwner(userId) && isValidId(messageId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(messageId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'chatKey', 'rawChatId', 'senderName', 'body', 'timestamp',
+                           'packageName', 'messageType', 'deletedInWhatsApp', 'viewOnce',
+                           'dedupKey', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'chatKey', 'rawChatId', 'senderName', 'body', 'timestamp',
+                           'packageName', 'messageType', 'deletedInWhatsApp', 'viewOnce',
+                           'mediaDuration', 'dedupKey', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidCloudMessage(incoming(), userId);
+
+        allow update: if isOwner(userId) &&
+                         isValidId(messageId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().chatKey == existing().chatKey &&
+                         incoming().rawChatId == existing().rawChatId &&
+                         incoming().dedupKey == existing().dedupKey &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'body', 'deletedInWhatsApp', 'mediaDuration', 'updatedAt'
+                         ]) &&
+                         isValidCloudMessage(incoming(), userId);
+
+        allow delete: if isOwner(userId) && isValidId(messageId);
+      }
+    }
+  }
+}

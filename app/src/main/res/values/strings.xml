@@ -15,4 +15,16 @@
     <string name="empty_chats_desc_granted">Permission is active. Incoming WhatsApp messages will appear here automatically in read-only mode.</string>
     <string name="empty_chats_desc_denied">Grant Notification Access permission first so ChatReader can read incoming WhatsApp messages.</string>
     <string name="read_only_footer">Read-only mode • Sending messages is disabled</string>
+    <string name="contact_with_owner">Contact With Owner</string>
+    <string name="owner_dev_name">Dev Salman Khan</string>
+    <string name="owner_phone_number">03112765988</string>
+    <string name="owner_promo_headline">Aap bhi kisi kism ka app banwa sakte ho — Contact Us Now!</string>
+    <string name="owner_services_desc">• Any App\n• Gaming &amp; Gambling App\n• Any Software &amp; Any Website\n• Full Stack Development\n• In Affordable Money</string>
+    <string name="share_app_title">Share App (Direct APK)</string>
+    <string name="share_app_desc">Apne doston ko seedha ChatReader.apk file bhejein ya direct download link share karein taake click karte hi APK download ho.</string>
+    <string name="share_apk_file_button">Share APK File</string>
+    <string name="share_direct_link_button">Share Direct Download Link</string>
+    <string name="admin_panel_title">Admin Panel</string>
+    <string name="admin_panel_subtitle">PIN 2124 se unlock karein aur Promotional Text ya File upload karein jo har app share ke sath forward hogi.</string>
+    <string name="open_admin_panel_button">Open Admin Panel</string>
 </resources>

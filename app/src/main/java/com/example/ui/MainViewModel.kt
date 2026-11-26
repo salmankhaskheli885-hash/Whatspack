@@ -1,23 +1,37 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
-import androidx.lifecycle.AndroidViewModel
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.ChatReaderApp
+import com.example.data.local.AdminPromoConfig
 import com.example.data.local.ChatEntity
 import com.example.data.local.MessageEntity
+import com.example.data.remote.CloudSyncRepository
+import com.example.data.repository.ChatRepository
 import com.example.data.repository.MessageTypes
 import com.example.service.ListenerStatusTracker
 import com.example.service.WhatsAppAppStatus
 import com.example.service.WhatsAppStorageImporter
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestoreException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -41,6 +55,12 @@ enum class MediaFilter(val label: String) {
     DELETED("Deleted"),
 }
 
+sealed interface CloudUiState<out T> {
+    data object Loading : CloudUiState<Nothing>
+    data class Success<T>(val data: T) : CloudUiState<T>
+    data class Error(val message: String) : CloudUiState<Nothing>
+}
+
 data class SystemPermissionState(
     val isNotificationAccessGranted: Boolean = false,
     val isVoiceSearchPermissionGranted: Boolean = false,
@@ -52,6 +72,9 @@ data class SystemPermissionState(
     val lastVaultSyncTimestamp: Long? = null,
     val isImporting: Boolean = false,
     val importStatusMessage: String? = null,
+    val isCloudSyncing: Boolean = false,
+    val cloudSyncStatus: String = "Online Sync Active",
+    val cloudSyncError: String? = null,
 )
 
 data class ChatsUiState(
@@ -90,26 +113,128 @@ data class MediaUiState(
     val systemState: SystemPermissionState = SystemPermissionState(),
 )
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = (application as ChatReaderApp).repository
+class MainViewModel(
+    private val appContext: Context,
+    private val repository: ChatRepository,
+    private val cloudSyncRepository: CloudSyncRepository,
+    private val currentUserId: String,
+) : ViewModel() {
+
+    companion object {
+        private const val TAG = "MainViewModel"
+
+        fun factory(application: Application, currentUserId: String): ViewModelProvider.Factory =
+            viewModelFactory {
+                initializer {
+                    val app = application as ChatReaderApp
+                    MainViewModel(
+                        appContext = app.applicationContext,
+                        repository = app.repository,
+                        cloudSyncRepository = app.cloudSyncRepository,
+                        currentUserId = currentUserId,
+                    )
+                }
+            }
+    }
 
     private val searchQuery = MutableStateFlow("")
     private val selectedFilter = MutableStateFlow(ChatFilter.ALL)
     private val selectedMediaFilter = MutableStateFlow(MediaFilter.ALL)
     private val permissionGranted = MutableStateFlow(
-        ListenerStatusTracker.isNotificationAccessGranted(application)
+        ListenerStatusTracker.isNotificationAccessGranted(appContext),
     )
     private val voicePermissionGranted = MutableStateFlow(
-        ListenerStatusTracker.isVoiceSearchPermissionGranted(application)
+        ListenerStatusTracker.isVoiceSearchPermissionGranted(appContext),
     )
     private val whatsAppApps = MutableStateFlow(
-        ListenerStatusTracker.queryWhatsAppApps(application)
+        ListenerStatusTracker.queryWhatsAppApps(appContext),
     )
     private val vaultInfo = MutableStateFlow(
-        WhatsAppStorageImporter.getVaultFolderInfo(application)
+        WhatsAppStorageImporter.getVaultFolderInfo(appContext),
     )
     private val isImporting = MutableStateFlow(false)
     private val importStatusMessage = MutableStateFlow<String?>(null)
+    private val isCloudSyncing = MutableStateFlow(false)
+    private val cloudSyncStatus = MutableStateFlow("Online Sync Active")
+    private val cloudSyncError = MutableStateFlow<String?>(null)
+
+    val cloudPromoState: StateFlow<CloudUiState<AdminPromoConfig?>> = cloudSyncRepository
+        .observeCloudPromo()
+        .map<AdminPromoConfig?, CloudUiState<AdminPromoConfig?>> { CloudUiState.Success(it) }
+        .catch { error ->
+            val firestoreError = generateSequence(error) { it.cause }
+                .filterIsInstance<FirebaseFirestoreException>()
+                .firstOrNull()
+            if (firestoreError == null && error is CancellationException) throw error
+            val rootError = firestoreError ?: error
+            Log.w(TAG, "Error observing cloud promo config", rootError)
+            emit(CloudUiState.Error(rootError.message ?: "Failed to load online promo config"))
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = CloudUiState.Loading,
+        )
+
+    init {
+        if (currentUserId.isNotBlank()) {
+            initializeOnlineSession()
+        }
+    }
+
+    private fun initializeOnlineSession() {
+        viewModelScope.launch {
+            Firebase.auth.currentUser?.let { user ->
+                cloudSyncRepository.ensureUserProfile(user).onFailure { err ->
+                    cloudSyncError.value = err.localizedMessage
+                }
+            }
+            syncToCloudNow()
+        }
+
+        // Observe cloud promo so AppShareHelper automatically stays updated online
+        viewModelScope.launch {
+            cloudPromoState.collect { }
+        }
+
+        // Observe cloud chats & messages and restore any missing records locally
+        viewModelScope.launch {
+            combine(
+                cloudSyncRepository.observeCloudChats(currentUserId),
+                cloudSyncRepository.observeCloudMessages(currentUserId),
+            ) { chats, messages ->
+                chats to messages
+            }
+                .map<Pair<List<com.example.data.remote.CloudChat>, List<com.example.data.remote.CloudMessage>>, CloudUiState<Pair<List<com.example.data.remote.CloudChat>, List<com.example.data.remote.CloudMessage>>>> {
+                    CloudUiState.Success(it)
+                }
+                .catch { error ->
+                    val firestoreError = generateSequence(error) { it.cause }
+                        .filterIsInstance<FirebaseFirestoreException>()
+                        .firstOrNull()
+                    if (firestoreError == null && error is CancellationException) throw error
+                    val rootError = firestoreError ?: error
+                    Log.w(TAG, "Error observing cloud backup", rootError)
+                    emit(CloudUiState.Error(rootError.message ?: "Cloud sync error"))
+                }
+                .collect { state ->
+                    when (state) {
+                        is CloudUiState.Success -> {
+                            val (chats, messages) = state.data
+                            if (messages.isNotEmpty()) {
+                                cloudSyncRepository.restoreCloudMessagesToLocal(chats, messages)
+                            }
+                            cloudSyncError.value = null
+                            cloudSyncStatus.value = "Synced online (${chats.size} chats)"
+                        }
+                        is CloudUiState.Error -> {
+                            cloudSyncError.value = state.message
+                        }
+                        CloudUiState.Loading -> Unit
+                    }
+                }
+        }
+    }
 
     private val permissionTuple = combine(
         permissionGranted,
@@ -127,19 +252,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private val cloudStateTuple = combine(
+        isCloudSyncing,
+        cloudSyncStatus,
+        cloudSyncError,
+    ) { syncing, status, err ->
+        Triple(syncing, status, err)
+    }
+
     val systemState: StateFlow<SystemPermissionState> = combine(
         permissionTuple,
         whatsAppApps,
         vaultInfo,
-        isImporting,
-        importStatusMessage,
-    ) { base, apps, vault, importing, msg ->
+        combine(isImporting, importStatusMessage) { imp, msg -> imp to msg },
+        cloudStateTuple,
+    ) { base, apps, vault, importPair, cloudTriple ->
         base.copy(
             whatsAppApps = apps,
             connectedFolderLabel = vault.folderLabel,
             lastVaultSyncTimestamp = vault.lastSyncTimestamp,
-            isImporting = importing,
-            importStatusMessage = msg,
+            isImporting = importPair.first,
+            importStatusMessage = importPair.second,
+            isCloudSyncing = cloudTriple.first,
+            cloudSyncStatus = cloudTriple.second,
+            cloudSyncError = cloudTriple.third,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -278,14 +414,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun syncToCloudNow() {
+        if (currentUserId.isBlank() || isCloudSyncing.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            isCloudSyncing.value = true
+            cloudSyncStatus.value = "Syncing to cloud..."
+            val chats = repository.allChats.first()
+            val messages = repository.recentMessages.first()
+            val result = cloudSyncRepository.syncLocalSnapshotToCloud(chats, messages)
+            result.onSuccess { count ->
+                cloudSyncError.value = null
+                cloudSyncStatus.value = "Online Sync Active ($count synced)"
+            }.onFailure { err ->
+                cloudSyncError.value = err.localizedMessage ?: "Cloud sync failed"
+                cloudSyncStatus.value = "Sync retry needed"
+            }
+            isCloudSyncing.value = false
+        }
+    }
+
+    suspend fun publishAdminPromo(
+        config: AdminPromoConfig,
+        fileBytes: ByteArray?,
+    ): Result<Unit> {
+        return cloudSyncRepository.publishAdminPromo(config, fileBytes)
+    }
+
     fun refreshSystemStatus() {
-        val context = getApplication<Application>()
-        permissionGranted.value = ListenerStatusTracker.isNotificationAccessGranted(context)
-        voicePermissionGranted.value = ListenerStatusTracker.isVoiceSearchPermissionGranted(context)
-        whatsAppApps.value = ListenerStatusTracker.queryWhatsAppApps(context)
-        val latestVault = WhatsAppStorageImporter.getVaultFolderInfo(context)
+        permissionGranted.value = ListenerStatusTracker.isNotificationAccessGranted(appContext)
+        voicePermissionGranted.value = ListenerStatusTracker.isVoiceSearchPermissionGranted(appContext)
+        whatsAppApps.value = ListenerStatusTracker.queryWhatsAppApps(appContext)
+        val latestVault = WhatsAppStorageImporter.getVaultFolderInfo(appContext)
         vaultInfo.value = latestVault
-        ListenerStatusTracker.requestRebindIfNeeded(context)
+        ListenerStatusTracker.requestRebindIfNeeded(appContext)
 
         val lastSync = latestVault.lastSyncTimestamp ?: 0L
         if (latestVault.treeUriString != null && !isImporting.value) {
@@ -300,52 +461,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun importFromTreeUri(treeUri: Uri) {
         if (isImporting.value) return
-        val context = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             isImporting.value = true
             importStatusMessage.value = "Scanning WhatsApp storage folder..."
             val result = runCatching {
-                WhatsAppStorageImporter.importFromTreeUri(context, treeUri, repository)
+                WhatsAppStorageImporter.importFromTreeUri(appContext, treeUri, repository)
             }.getOrElse { err ->
                 com.example.service.StorageImportSummary(0, 0, "Import error: ${err.localizedMessage ?: "Unknown"}")
             }
-            vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(context)
+            vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(appContext)
             importStatusMessage.value = result.summaryMessage
             isImporting.value = false
+            syncToCloudNow()
         }
     }
 
     fun syncConnectedFolder() {
         if (isImporting.value) return
-        val context = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             isImporting.value = true
             importStatusMessage.value = "Syncing connected WhatsApp folder..."
             val result = runCatching {
-                WhatsAppStorageImporter.syncConnectedFolder(context, repository)
+                WhatsAppStorageImporter.syncConnectedFolder(appContext, repository)
             }.getOrElse { err ->
                 com.example.service.StorageImportSummary(0, 0, "Sync error: ${err.localizedMessage ?: "Unknown"}")
             }
-            vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(context)
+            vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(appContext)
             importStatusMessage.value = result.summaryMessage
             isImporting.value = false
+            syncToCloudNow()
         }
     }
 
     fun importDocuments(uris: List<Uri>, sharedText: String? = null) {
         if (uris.isEmpty() && sharedText.isNullOrBlank()) return
         if (isImporting.value) return
-        val context = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             isImporting.value = true
-            importStatusMessage.value = "Saving WhatsApp data into local vault..."
+            importStatusMessage.value = "Saving WhatsApp data into cloud & local vault..."
             val result = runCatching {
-                WhatsAppStorageImporter.importDocumentUris(context, uris, repository, sharedText)
+                WhatsAppStorageImporter.importDocumentUris(appContext, uris, repository, sharedText)
             }.getOrElse { err ->
                 com.example.service.StorageImportSummary(0, 0, "Import error: ${err.localizedMessage ?: "Unknown"}")
             }
             importStatusMessage.value = result.summaryMessage
             isImporting.value = false
+            syncToCloudNow()
         }
     }
 
@@ -355,12 +516,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun exportBackupToUri(targetUri: Uri) {
         if (isImporting.value) return
-        val context = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
             isImporting.value = true
             importStatusMessage.value = "Saving backup to phone storage..."
             val msg = runCatching {
-                com.example.service.ChatBackupManager.exportBackupToUri(context, targetUri, repository)
+                com.example.service.ChatBackupManager.exportBackupToUri(appContext, targetUri, repository)
             }.getOrElse { err ->
                 "Backup failed: ${err.localizedMessage ?: "Unknown error"}"
             }
@@ -370,19 +530,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openNotificationSettings() {
-        ListenerStatusTracker.openNotificationAccessSettings(getApplication())
+        ListenerStatusTracker.openNotificationAccessSettings(appContext)
     }
 
     fun openWhatsAppNotificationSettings(packageName: String) {
-        ListenerStatusTracker.openAppNotificationSettings(getApplication(), packageName)
+        ListenerStatusTracker.openAppNotificationSettings(appContext, packageName)
     }
 
     fun openOwnAppDetailsSettings() {
-        ListenerStatusTracker.openOwnAppDetailsSettings(getApplication())
+        ListenerStatusTracker.openOwnAppDetailsSettings(appContext)
     }
 
     fun openBatteryOptimizationSettings() {
-        ListenerStatusTracker.openBatteryOptimizationSettings(getApplication())
+        ListenerStatusTracker.openBatteryOptimizationSettings(appContext)
     }
 
     fun updateSearchQuery(query: String) {
@@ -400,25 +560,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun markChatAsRead(chatId: String) {
         viewModelScope.launch {
             repository.markChatAsRead(chatId)
+            repository.observeChat(chatId).first()?.let { chat ->
+                cloudSyncRepository.syncLocalChatToCloud(chat)
+            }
         }
     }
 
     fun togglePin(chatId: String, currentlyPinned: Boolean) {
         viewModelScope.launch {
             repository.setPinned(chatId, !currentlyPinned)
+            repository.observeChat(chatId).first()?.let { chat ->
+                cloudSyncRepository.syncLocalChatToCloud(chat)
+            }
         }
     }
 
     fun deleteChat(chatId: String) {
         viewModelScope.launch {
             repository.deleteChat(chatId)
+            cloudSyncRepository.deleteCloudChat(chatId)
         }
     }
 
     fun clearAllData() {
         viewModelScope.launch {
             repository.clearAll()
-            WhatsAppStorageImporter.clearCapturedSafTracking(getApplication())
+            WhatsAppStorageImporter.clearCapturedSafTracking(appContext)
+            cloudSyncRepository.clearAllCloudData()
         }
     }
 }
