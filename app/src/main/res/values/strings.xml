@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">ChatReader</string>
+    <string name="listener_service_name">ChatReader WhatsApp Listener</string>
+    <string name="nav_chats">Chats</string>
+    <string name="nav_details">Details</string>
+    <string name="nav_permission">Permission</string>
+    <string name="read_only_badge">Read-Only</string>
+    <string name="permission_required_title">WhatsApp Read Permission Needed</string>
+    <string name="permission_required_desc">Enable Notification Access for ChatReader so incoming WhatsApp messages can be read and saved locally without sending replies.</string>
+    <string name="permission_grant_button">Grant Permission</string>
+    <string name="permission_granted_title">Notification Access Active</string>
+    <string name="permission_granted_desc">Listening for incoming WhatsApp and WhatsApp Business messages in real time.</string>
+    <string name="empty_chats_title">No WhatsApp Messages Yet</string>
+    <string name="empty_chats_desc_granted">Permission is active. Incoming WhatsApp messages will appear here automatically in read-only mode.</string>
+    <string name="empty_chats_desc_denied">Grant Notification Access permission first so ChatReader can read incoming WhatsApp messages.</string>
+    <string name="read_only_footer">Read-only mode • Sending messages is disabled</string>
+</resources>

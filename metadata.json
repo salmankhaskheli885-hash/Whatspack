@@ -1,0 +1,6 @@
+{
+  "name": "ChatReader",
+  "description": "Read-only WhatsApp notification and chat detail viewer powered by Android Notification Access.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
