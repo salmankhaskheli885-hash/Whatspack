@@ -1,6 +1,8 @@
 package com.example.ui
 
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -101,6 +103,39 @@ fun ChatReaderNavHost(
     val chatsUiState by viewModel.chatsUiState.collectAsStateWithLifecycle()
     val detailsUiState by viewModel.detailsUiState.collectAsStateWithLifecycle()
     val systemState by viewModel.systemState.collectAsStateWithLifecycle()
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { treeUri ->
+        if (treeUri != null) {
+            viewModel.importFromTreeUri(treeUri)
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.importDocuments(uris)
+        }
+    }
+
+    val launchFolderPicker = {
+        folderPickerLauncher.launch(null)
+    }
+
+    val launchFilePicker = {
+        filePickerLauncher.launch(
+            arrayOf(
+                "text/plain",
+                "application/zip",
+                "image/*",
+                "video/*",
+                "audio/*",
+                "application/pdf",
+            )
+        )
+    }
 
     LifecycleResumeEffect(Unit) {
         viewModel.refreshSystemStatus()
@@ -206,6 +241,10 @@ fun ChatReaderNavHost(
                                 navigateToTopLevel(AppRoutes.ROUTE_PERMISSION)
                             },
                             onVoicePermissionChanged = viewModel::refreshSystemStatus,
+                            onImportFolderClick = launchFolderPicker,
+                            onSyncFolderClick = viewModel::syncConnectedFolder,
+                            onImportFilesClick = launchFilePicker,
+                            onDismissImportMessage = viewModel::clearImportStatusMessage,
                             onTogglePin = viewModel::togglePin,
                             onMarkRead = viewModel::markChatAsRead,
                             onDeleteChat = viewModel::deleteChat,
@@ -229,6 +268,9 @@ fun ChatReaderNavHost(
                             onVoicePermissionChanged = viewModel::refreshSystemStatus,
                             onOpenAppNotificationSettings = viewModel::openWhatsAppNotificationSettings,
                             onOpenOwnAppDetails = viewModel::openOwnAppDetailsSettings,
+                            onConnectWhatsAppFolder = launchFolderPicker,
+                            onSyncWhatsAppFolder = viewModel::syncConnectedFolder,
+                            onImportChatOrMediaFiles = launchFilePicker,
                             onClearAllData = viewModel::clearAllData,
                         )
                     }

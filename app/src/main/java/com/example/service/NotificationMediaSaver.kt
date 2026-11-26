@@ -22,7 +22,7 @@ object NotificationMediaSaver {
         sbn: StatusBarNotification,
         parsed: ParsedWhatsAppMessage,
     ): String? {
-        if (parsed.messageType != MessageTypes.IMAGE && parsed.messageType != MessageTypes.VIDEO) {
+        if (parsed.messageType == MessageTypes.TEXT || parsed.messageType == MessageTypes.CALL) {
             return null
         }
 
@@ -31,18 +31,35 @@ object NotificationMediaSaver {
             if (!exists()) mkdirs()
         }
 
-        // 1. Try MessagingStyle dataUri (if WhatsApp attached a readable content URI)
+        // 1. Try MessagingStyle dataUri (supports images, voice notes, videos, and documents)
         parsed.mediaUriString?.let { uriStr ->
             val savedFromUri = runCatching {
                 val uri = Uri.parse(uriStr)
+                val ext = when (parsed.messageType) {
+                    MessageTypes.VOICE -> "ogg"
+                    MessageTypes.VIDEO -> "mp4"
+                    MessageTypes.DOCUMENT -> "bin"
+                    else -> "jpg"
+                }
                 context.contentResolver.openInputStream(uri)?.use { input ->
-                    val bitmap = BitmapFactory.decodeStream(input) ?: return@use null
-                    val outFile = File(mediaDir, "media_${UUID.randomUUID()}.jpg")
-                    FileOutputStream(outFile).use { fos ->
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 88, fos)
+                    if (parsed.messageType == MessageTypes.IMAGE) {
+                        val bitmap = BitmapFactory.decodeStream(input) ?: return@use null
+                        val outFile = File(mediaDir, "media_${UUID.randomUUID()}.jpg")
+                        FileOutputStream(outFile).use { fos ->
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 88, fos)
+                        }
+                        bitmap.recycle()
+                        outFile.absolutePath
+                    } else {
+                        val outFile = File(mediaDir, "media_${UUID.randomUUID()}.$ext")
+                        FileOutputStream(outFile).use { fos ->
+                            input.copyTo(fos)
+                        }
+                        if (outFile.length() > 0L) outFile.absolutePath else {
+                            outFile.delete()
+                            null
+                        }
                     }
-                    bitmap.recycle()
-                    outFile.absolutePath
                 }
             }.getOrNull()
             if (savedFromUri != null) return savedFromUri

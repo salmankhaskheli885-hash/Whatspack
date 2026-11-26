@@ -115,16 +115,19 @@ interface ChatDao {
         mediaDuration: String?,
         isViewOnce: Boolean,
         mediaFilePath: String?,
+        checkRecentDuplicate: Boolean = true,
     ): Boolean {
-        val recentDupes = countMatchingRecentMessages(
-            chatId = chatId,
-            senderName = senderName,
-            body = body,
-            minTimestamp = timestamp - 5_000L,
-            maxTimestamp = timestamp + 5_000L,
-        )
-        if (recentDupes > 0) {
-            return false
+        if (checkRecentDuplicate) {
+            val recentDupes = countMatchingRecentMessages(
+                chatId = chatId,
+                senderName = senderName,
+                body = body,
+                minTimestamp = timestamp - 5_000L,
+                maxTimestamp = timestamp + 5_000L,
+            )
+            if (recentDupes > 0) {
+                return false
+            }
         }
 
         val existingChat = getChatOnce(chatId)

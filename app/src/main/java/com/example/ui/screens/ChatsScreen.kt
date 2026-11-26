@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MarkChatRead
 import androidx.compose.material.icons.filled.Mic
@@ -43,11 +44,15 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,7 +61,9 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -106,6 +113,10 @@ fun ChatsScreen(
     onGrantPermissionClick: () -> Unit,
     onOpenPermissionTab: () -> Unit,
     onVoicePermissionChanged: () -> Unit,
+    onImportFolderClick: () -> Unit,
+    onSyncFolderClick: () -> Unit,
+    onImportFilesClick: () -> Unit,
+    onDismissImportMessage: () -> Unit,
     onTogglePin: (String, Boolean) -> Unit,
     onMarkRead: (String) -> Unit,
     onDeleteChat: (String) -> Unit,
@@ -210,6 +221,25 @@ fun ChatsScreen(
                 }
             },
             actions = {
+                IconButton(
+                    onClick = {
+                        if (uiState.systemState.connectedFolderLabel != null) {
+                            onSyncFolderClick()
+                        } else {
+                            onImportFolderClick()
+                        }
+                    },
+                    modifier = Modifier.testTag("chats_storage_vault_button"),
+                ) {
+                    Icon(
+                        imageVector = if (uiState.systemState.connectedFolderLabel != null) {
+                            Icons.Filled.Sync
+                        } else {
+                            Icons.Filled.FolderOpen
+                        },
+                        contentDescription = "Import or sync WhatsApp storage",
+                    )
+                }
                 IconButton(
                     onClick = onVoiceSearchClick,
                     modifier = Modifier.testTag("voice_search_button"),
@@ -364,6 +394,53 @@ fun ChatsScreen(
                     .fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
+                if (uiState.systemState.isImporting || !uiState.systemState.importStatusMessage.isNullOrBlank()) {
+                    item(key = "import_status_banner") {
+                        Card(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = uiState.systemState.importStatusMessage ?: "Syncing WhatsApp storage...",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    if (!uiState.systemState.isImporting) {
+                                        IconButton(
+                                            onClick = onDismissImportMessage,
+                                            modifier = Modifier.size(28.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Close,
+                                                contentDescription = "Dismiss status",
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                                if (uiState.systemState.isImporting) {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (!uiState.systemState.isNotificationAccessGranted) {
                     item(key = "permission_banner") {
                         PermissionBannerCard(
@@ -379,6 +456,8 @@ fun ChatsScreen(
                             hasAnyChats = uiState.totalChatCount > 0,
                             permissionGranted = uiState.systemState.isNotificationAccessGranted,
                             onGrantPermissionClick = onGrantPermissionClick,
+                            onImportFolderClick = onImportFolderClick,
+                            onImportFilesClick = onImportFilesClick,
                             onResetFilter = {
                                 onSearchQueryChange("")
                                 onSelectFilter(ChatFilter.ALL)
@@ -636,6 +715,8 @@ private fun EmptyChatsState(
     hasAnyChats: Boolean,
     permissionGranted: Boolean,
     onGrantPermissionClick: () -> Unit,
+    onImportFolderClick: () -> Unit,
+    onImportFilesClick: () -> Unit,
     onResetFilter: () -> Unit,
 ) {
     Column(
@@ -643,7 +724,7 @@ private fun EmptyChatsState(
             .fillMaxWidth()
             .padding(horizontal = 28.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Image(
             painter = painterResource(id = R.drawable.img_empty_chats),
@@ -651,7 +732,7 @@ private fun EmptyChatsState(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(210.dp)
+                .height(190.dp)
                 .clip(RoundedCornerShape(20.dp)),
         )
 
@@ -669,7 +750,7 @@ private fun EmptyChatsState(
         Text(
             text = when {
                 hasAnyChats -> "Try clearing your search query or switching back to the All filter."
-                permissionGranted -> stringResource(R.string.empty_chats_desc_granted)
+                permissionGranted -> "New incoming messages capture automatically. To see old WhatsApp photos, videos, voice notes, or chats right now, connect your phone's WhatsApp folder or import an exported chat."
                 else -> stringResource(R.string.empty_chats_desc_denied)
             },
             style = MaterialTheme.typography.bodyMedium,
@@ -684,19 +765,55 @@ private fun EmptyChatsState(
             ) {
                 Text("Show All Chats")
             }
-        } else if (!permissionGranted) {
+        } else {
+            if (!permissionGranted) {
+                Button(
+                    onClick = onGrantPermissionClick,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("empty_grant_permission_button"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Allow WhatsApp Notification Access")
+                }
+            }
+
             Button(
-                onClick = onGrantPermissionClick,
+                onClick = onImportFolderClick,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.testTag("empty_grant_permission_button"),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("empty_import_folder_button"),
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Lock,
+                    imageVector = Icons.Filled.FolderOpen,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Allow WhatsApp Notification Access")
+                Text("Connect Phone WhatsApp Folder")
+            }
+
+            OutlinedButton(
+                onClick = onImportFilesClick,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("empty_import_files_button"),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.UploadFile,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Import Chat (.txt / .zip) or Media")
             }
         }
     }

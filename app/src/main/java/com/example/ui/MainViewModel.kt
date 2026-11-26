@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ChatReaderApp
@@ -9,6 +10,8 @@ import com.example.data.local.MessageEntity
 import com.example.data.repository.MessageTypes
 import com.example.service.ListenerStatusTracker
 import com.example.service.WhatsAppAppStatus
+import com.example.service.WhatsAppStorageImporter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,6 +37,10 @@ data class SystemPermissionState(
     val isServiceBound: Boolean = false,
     val lastCapturedTimestamp: Long? = null,
     val whatsAppApps: List<WhatsAppAppStatus> = emptyList(),
+    val connectedFolderLabel: String? = null,
+    val lastVaultSyncTimestamp: Long? = null,
+    val isImporting: Boolean = false,
+    val importStatusMessage: String? = null,
 )
 
 data class ChatsUiState(
@@ -78,8 +85,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val whatsAppApps = MutableStateFlow(
         ListenerStatusTracker.queryWhatsAppApps(application)
     )
+    private val vaultInfo = MutableStateFlow(
+        WhatsAppStorageImporter.getVaultFolderInfo(application)
+    )
+    private val isImporting = MutableStateFlow(false)
+    private val importStatusMessage = MutableStateFlow<String?>(null)
 
-    val systemState: StateFlow<SystemPermissionState> = combine(
+    private val permissionTuple = combine(
         permissionGranted,
         voicePermissionGranted,
         ListenerStatusTracker.isServiceBound,
@@ -93,6 +105,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             lastCapturedTimestamp = lastTs,
             whatsAppApps = apps,
         )
+    }
+
+    val systemState: StateFlow<SystemPermissionState> = combine(
+        permissionTuple,
+        vaultInfo,
+        isImporting,
+        importStatusMessage,
+    ) { base, vault, importing, msg ->
+        base.copy(
+            connectedFolderLabel = vault.folderLabel,
+            lastVaultSyncTimestamp = vault.lastSyncTimestamp,
+            isImporting = importing,
+            importStatusMessage = msg,
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -100,6 +126,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isNotificationAccessGranted = permissionGranted.value,
             isVoiceSearchPermissionGranted = voicePermissionGranted.value,
             whatsAppApps = whatsAppApps.value,
+            connectedFolderLabel = vaultInfo.value.folderLabel,
+            lastVaultSyncTimestamp = vaultInfo.value.lastSyncTimestamp,
         ),
     )
 
@@ -204,6 +232,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         permissionGranted.value = ListenerStatusTracker.isNotificationAccessGranted(context)
         voicePermissionGranted.value = ListenerStatusTracker.isVoiceSearchPermissionGranted(context)
         whatsAppApps.value = ListenerStatusTracker.queryWhatsAppApps(context)
+        vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(context)
+        ListenerStatusTracker.requestRebindIfNeeded(context)
+    }
+
+    fun importFromTreeUri(treeUri: Uri) {
+        if (isImporting.value) return
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            isImporting.value = true
+            importStatusMessage.value = "Scanning WhatsApp storage folder..."
+            val result = runCatching {
+                WhatsAppStorageImporter.importFromTreeUri(context, treeUri, repository)
+            }.getOrElse { err ->
+                com.example.service.StorageImportSummary(0, 0, "Import error: ${err.localizedMessage ?: "Unknown"}")
+            }
+            vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(context)
+            importStatusMessage.value = result.summaryMessage
+            isImporting.value = false
+        }
+    }
+
+    fun syncConnectedFolder() {
+        if (isImporting.value) return
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            isImporting.value = true
+            importStatusMessage.value = "Syncing connected WhatsApp folder..."
+            val result = runCatching {
+                WhatsAppStorageImporter.syncConnectedFolder(context, repository)
+            }.getOrElse { err ->
+                com.example.service.StorageImportSummary(0, 0, "Sync error: ${err.localizedMessage ?: "Unknown"}")
+            }
+            vaultInfo.value = WhatsAppStorageImporter.getVaultFolderInfo(context)
+            importStatusMessage.value = result.summaryMessage
+            isImporting.value = false
+        }
+    }
+
+    fun importDocuments(uris: List<Uri>, sharedText: String? = null) {
+        if (uris.isEmpty() && sharedText.isNullOrBlank()) return
+        if (isImporting.value) return
+        val context = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            isImporting.value = true
+            importStatusMessage.value = "Saving WhatsApp data into local vault..."
+            val result = runCatching {
+                WhatsAppStorageImporter.importDocumentUris(context, uris, repository, sharedText)
+            }.getOrElse { err ->
+                com.example.service.StorageImportSummary(0, 0, "Import error: ${err.localizedMessage ?: "Unknown"}")
+            }
+            importStatusMessage.value = result.summaryMessage
+            isImporting.value = false
+        }
+    }
+
+    fun clearImportStatusMessage() {
+        importStatusMessage.value = null
     }
 
     fun openNotificationSettings() {

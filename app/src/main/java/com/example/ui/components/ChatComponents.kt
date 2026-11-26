@@ -3,8 +3,12 @@ package com.example.ui.components
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
+import android.media.MediaPlayer
+import android.widget.MediaController
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,6 +39,8 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LooksOne
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
@@ -52,7 +58,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,16 +76,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import com.example.R
 import com.example.data.local.MessageEntity
 import com.example.data.repository.MessageTypes
 import com.example.ui.theme.AvatarPalette
-import java.io.File
 import com.example.ui.theme.WarningAmber
 import com.example.ui.theme.WarningContainerDark
 import com.example.ui.theme.WarningContainerLight
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -280,9 +292,60 @@ fun DeletedPreservedBadge(
 fun VoiceMessageBubbleContent(
     duration: String?,
     body: String,
+    mediaFilePath: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val barHeights = listOf(8, 16, 12, 22, 18, 10, 24, 15, 20, 11, 17, 9, 21, 14, 10)
+    val context = LocalContext.current
+    val hasPlayableAudio = remember(mediaFilePath) {
+        !mediaFilePath.isNullOrBlank() && File(mediaFilePath).exists()
+    }
+    var isPlaying by remember(mediaFilePath) { mutableStateOf(false) }
+    var mediaPlayer by remember(mediaFilePath) { mutableStateOf<MediaPlayer?>(null) }
+
+    DisposableEffect(mediaFilePath) {
+        onDispose {
+            runCatching {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+            }
+            mediaPlayer = null
+            isPlaying = false
+        }
+    }
+
+    val togglePlayback = {
+        if (hasPlayableAudio && mediaFilePath != null) {
+            if (isPlaying) {
+                runCatching { mediaPlayer?.pause() }
+                isPlaying = false
+            } else {
+                val player = mediaPlayer
+                if (player != null) {
+                    runCatching {
+                        player.start()
+                        isPlaying = true
+                    }.onFailure {
+                        Toast.makeText(context, "Unable to play audio", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    runCatching {
+                        MediaPlayer().apply {
+                            setDataSource(mediaFilePath)
+                            setOnCompletionListener { isPlaying = false }
+                            prepare()
+                            start()
+                            mediaPlayer = this
+                            isPlaying = true
+                        }
+                    }.onFailure {
+                        Toast.makeText(context, "Unsupported audio format on this device", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -298,16 +361,21 @@ fun VoiceMessageBubbleContent(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                        .background(MaterialTheme.colorScheme.primary)
+                        .then(if (hasPlayableAudio) Modifier.clickable { togglePlayback() } else Modifier),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Mic,
-                        contentDescription = "Voice message",
+                        imageVector = when {
+                            hasPlayableAudio && isPlaying -> Icons.Filled.Pause
+                            hasPlayableAudio -> Icons.Filled.PlayArrow
+                            else -> Icons.Filled.Mic
+                        },
+                        contentDescription = if (hasPlayableAudio) "Play voice note" else "Voice message",
                         tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
 
@@ -318,7 +386,7 @@ fun VoiceMessageBubbleContent(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Voice Message",
+                            text = if (hasPlayableAudio) "Saved Voice Audio" else "Voice Message",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
@@ -341,7 +409,11 @@ fun VoiceMessageBubbleContent(
                                     .width(3.dp)
                                     .height(heightVal.dp)
                                     .clip(RoundedCornerShape(2.dp))
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.75f)),
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(
+                                            alpha = if (isPlaying) 1f else 0.72f,
+                                        )
+                                    ),
                             )
                         }
                     }
@@ -349,7 +421,11 @@ fun VoiceMessageBubbleContent(
             }
 
             Text(
-                text = "$body • Voice note detected",
+                text = if (hasPlayableAudio) {
+                    "$body • Tap play to listen offline"
+                } else {
+                    "$body • Voice note detected"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -430,11 +506,16 @@ fun SavedMediaPreviewCard(
     isViewOnce: Boolean,
     messageType: String,
     body: String,
-    onOpenFullScreen: (String) -> Unit,
+    duration: String? = null,
+    onOpenFullScreen: (String, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val bitmap = remember(filePath) {
-        if (!filePath.isNullOrBlank() && File(filePath).exists()) {
+    val context = LocalContext.current
+    val fileExists = remember(filePath) {
+        !filePath.isNullOrBlank() && File(filePath).exists()
+    }
+    val bitmap = remember(filePath, messageType, fileExists) {
+        if (fileExists && messageType == MessageTypes.IMAGE && filePath != null) {
             runCatching { BitmapFactory.decodeFile(filePath) }.getOrNull()
         } else {
             null
@@ -455,46 +536,132 @@ fun SavedMediaPreviewCard(
             }
         }
 
-        if (bitmap != null && filePath != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = "Saved WhatsApp media",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 140.dp, max = 240.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onOpenFullScreen(filePath) },
-            )
-            Text(
-                text = "$body • Tap to view anytime",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        } else {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    modifier = Modifier.padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+        when {
+            bitmap != null && filePath != null -> {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Saved WhatsApp media",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 140.dp, max = 240.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenFullScreen(filePath, MessageTypes.IMAGE) },
+                )
+                Text(
+                    text = "$body • Tap to view anytime",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            fileExists && messageType == MessageTypes.VIDEO && filePath != null -> {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF131D24),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenFullScreen(filePath, MessageTypes.VIDEO) },
                 ) {
-                    Text(
-                        text = body,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = if (isViewOnce) {
-                            "View Once record saved permanently here. Note: WhatsApp hides raw View Once photo/video files from system notifications unless a preview bitmap was included."
-                        } else {
-                            "Media notification saved permanently in ChatReader."
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(12.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = "Play saved video",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            }
+                            Text(
+                                text = if (!duration.isNullOrBlank()) "$body ($duration)" else body,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = "Saved video • Tap to play offline",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            fileExists && messageType == MessageTypes.DOCUMENT && filePath != null -> {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { openSavedDocument(context, filePath) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Description,
+                            contentDescription = "Open document",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp),
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = body,
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "Saved locally • Tap to open",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+            else -> {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = body,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = if (isViewOnce) {
+                                "View Once record saved permanently here. Note: WhatsApp hides raw View Once photo/video files from system notifications unless a preview bitmap was included."
+                            } else {
+                                "Media notification saved permanently in ChatReader. Connect your WhatsApp Media folder in Permissions to import full files."
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -504,10 +671,15 @@ fun SavedMediaPreviewCard(
 @Composable
 fun FullScreenMediaDialog(
     filePath: String,
+    messageType: String = MessageTypes.IMAGE,
     onDismiss: () -> Unit,
 ) {
-    val bitmap = remember(filePath) {
-        runCatching { BitmapFactory.decodeFile(filePath) }.getOrNull()
+    val bitmap = remember(filePath, messageType) {
+        if (messageType != MessageTypes.VIDEO) {
+            runCatching { BitmapFactory.decodeFile(filePath) }.getOrNull()
+        } else {
+            null
+        }
     }
     Dialog(
         onDismissRequest = onDismiss,
@@ -519,7 +691,23 @@ fun FullScreenMediaDialog(
                 .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            if (bitmap != null) {
+            if (messageType == MessageTypes.VIDEO) {
+                AndroidView(
+                    factory = { ctx ->
+                        VideoView(ctx).apply {
+                            val controller = MediaController(ctx)
+                            controller.setAnchorView(this)
+                            setMediaController(controller)
+                            setVideoPath(filePath)
+                            setOnPreparedListener { mp ->
+                                mp.isLooping = false
+                                start()
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (bitmap != null) {
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "Full screen saved media",
@@ -542,6 +730,20 @@ fun FullScreenMediaDialog(
                 )
             }
         }
+    }
+}
+
+private fun openSavedDocument(context: Context, filePath: String) {
+    runCatching {
+        val file = File(filePath)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "*/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Open saved file"))
+    }.onFailure {
+        Toast.makeText(context, "No app available to open this file", Toast.LENGTH_SHORT).show()
     }
 }
 

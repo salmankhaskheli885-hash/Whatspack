@@ -25,10 +25,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Visibility
@@ -39,6 +42,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -75,6 +79,9 @@ fun PermissionScreen(
     onVoicePermissionChanged: () -> Unit,
     onOpenAppNotificationSettings: (String) -> Unit,
     onOpenOwnAppDetails: () -> Unit,
+    onConnectWhatsAppFolder: () -> Unit,
+    onSyncWhatsAppFolder: () -> Unit,
+    onImportChatOrMediaFiles: () -> Unit,
     onClearAllData: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -237,6 +244,148 @@ fun PermissionScreen(
                                         "Open Notification Access Settings"
                                     },
                                 )
+                            }
+                        }
+                    }
+                }
+
+                item(key = "storage_vault_card") {
+                    val folderLabel = systemState.connectedFolderLabel
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (folderLabel != null) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                        ),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.FolderOpen,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp),
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Phone Storage WhatsApp Vault",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        text = if (folderLabel != null) {
+                                            "Connected: $folderLabel"
+                                        } else {
+                                            "Import existing WhatsApp photos, videos, voice notes & chats into local vault"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "Select Android/media/com.whatsapp/WhatsApp/Media (or WhatsApp/Media) to copy and save existing files permanently here, OR use WhatsApp → Export chat → Share to ChatReader.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+
+                            systemState.lastVaultSyncTimestamp?.let { syncTs ->
+                                Text(
+                                    text = "Last folder sync: ${WhatsAppTimeFormatter.formatFullDateTime(syncTs)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+
+                            if (systemState.isImporting) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+
+                            systemState.importStatusMessage?.let { msg ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                                ) {
+                                    Text(
+                                        text = msg,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    )
+                                }
+                            }
+
+                            if (folderLabel != null) {
+                                Button(
+                                    onClick = onSyncWhatsAppFolder,
+                                    enabled = !systemState.isImporting,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("sync_whatsapp_folder_button"),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Sync,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Sync Connected WhatsApp Folder")
+                                }
+                            }
+
+                            Button(
+                                onClick = onConnectWhatsAppFolder,
+                                enabled = !systemState.isImporting,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("connect_whatsapp_folder_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    if (folderLabel != null) "Change Connected Folder" else "Connect Phone WhatsApp Folder",
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = onImportChatOrMediaFiles,
+                                enabled = !systemState.isImporting,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("import_chat_files_button"),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.UploadFile,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Import Chat (.txt / .zip) or Media Files")
                             }
                         }
                     }

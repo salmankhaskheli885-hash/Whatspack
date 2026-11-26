@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,6 +60,19 @@ object ListenerStatusTracker {
             context,
             Manifest.permission.RECORD_AUDIO,
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun requestRebindIfNeeded(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+            isNotificationAccessGranted(context) &&
+            !_isServiceBound.value
+        ) {
+            runCatching {
+                NotificationListenerService.requestRebind(
+                    ComponentName(context, WhatsAppNotificationListenerService::class.java),
+                )
+            }
+        }
     }
 
     fun queryWhatsAppApps(context: Context): List<WhatsAppAppStatus> {

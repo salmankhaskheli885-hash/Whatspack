@@ -53,7 +53,10 @@ class ChatRepository(private val chatDao: ChatDao) {
     fun observeMessagesForChat(chatId: String): Flow<List<MessageEntity>> =
         chatDao.observeMessagesForChat(chatId)
 
-    suspend fun saveIncomingMessage(parsed: ParsedWhatsAppMessage): Boolean {
+    suspend fun saveIncomingMessage(
+        parsed: ParsedWhatsAppMessage,
+        checkRecentDuplicate: Boolean = true,
+    ): Boolean {
         return chatDao.recordIncomingMessage(
             chatId = parsed.chatId,
             chatTitle = parsed.chatTitle,
@@ -69,6 +72,7 @@ class ChatRepository(private val chatDao: ChatDao) {
             mediaDuration = parsed.mediaDuration,
             isViewOnce = parsed.isViewOnce,
             mediaFilePath = parsed.mediaFilePath,
+            checkRecentDuplicate = checkRecentDuplicate,
         )
     }
 

@@ -96,7 +96,7 @@ fun ChatDetailScreen(
     var searchQuery by remember { mutableStateOf("") }
     var menuExpanded by remember { mutableStateOf(false) }
     var inspectedMessage by remember { mutableStateOf<MessageEntity?>(null) }
-    var fullScreenMediaPath by remember { mutableStateOf<String?>(null) }
+    var fullScreenMedia by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showDeleteChatConfirm by remember { mutableStateOf(false) }
 
     val filteredMessages = remember(uiState.messages, searchQuery) {
@@ -383,7 +383,7 @@ fun ChatDetailScreen(
                             message = message,
                             showSenderName = chat?.isGroup == true,
                             onClick = { inspectedMessage = message },
-                            onOpenFullScreenMedia = { path -> fullScreenMediaPath = path },
+                            onOpenFullScreenMedia = { path, type -> fullScreenMedia = path to type },
                         )
                     }
                 }
@@ -399,10 +399,11 @@ fun ChatDetailScreen(
         )
     }
 
-    fullScreenMediaPath?.let { path ->
+    fullScreenMedia?.let { (path, type) ->
         FullScreenMediaDialog(
             filePath = path,
-            onDismiss = { fullScreenMediaPath = null },
+            messageType = type,
+            onDismiss = { fullScreenMedia = null },
         )
     }
 
@@ -463,7 +464,7 @@ private fun IncomingMessageBubble(
     message: MessageEntity,
     showSenderName: Boolean,
     onClick: () -> Unit,
-    onOpenFullScreenMedia: (String) -> Unit,
+    onOpenFullScreenMedia: (String, String) -> Unit,
 ) {
     val bubbleShape = RoundedCornerShape(
         topStart = 4.dp,
@@ -516,6 +517,7 @@ private fun IncomingMessageBubble(
                         VoiceMessageBubbleContent(
                             duration = message.mediaDuration,
                             body = message.body,
+                            mediaFilePath = message.mediaFilePath,
                             modifier = Modifier.testTag("voice_message_bubble_${message.id}"),
                         )
                     }
@@ -525,6 +527,7 @@ private fun IncomingMessageBubble(
                             isViewOnce = message.isViewOnce,
                             messageType = message.messageType,
                             body = message.body,
+                            duration = message.mediaDuration,
                             onOpenFullScreen = onOpenFullScreenMedia,
                             modifier = Modifier.testTag("media_message_bubble_${message.id}"),
                         )
